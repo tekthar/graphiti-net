@@ -2,7 +2,7 @@
 
 Status: draft, November 2026.
 
-> Graphiti is a brand of Zep Software, Inc. net-graphiti is an independent rewrite of Graphiti in .NET. It is not
+> Graphiti is a brand of Zep Software, Inc. graphiti-net is an independent rewrite of Graphiti in .NET. It is not
 > affiliated with, endorsed by, or sponsored by Zep Software, Inc. "Graphiti" in this document means the upstream
 > Python library at [getzep/graphiti](https://github.com/getzep/graphiti).
 

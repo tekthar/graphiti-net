@@ -14,7 +14,7 @@ changes so we can agree on the approach.
 
    ```csharp
    // Copyright 2024, Zep Software, Inc.
-   // Copyright 2026, net-graphiti contributors
+   // Copyright 2026, graphiti-net contributors
    // Licensed under the Apache License, Version 2.0. See LICENSE.
    //
    // Ported from graphiti_core/<path>.py (Graphiti v<x.y.z>) and changed for .NET.

@@ -2,7 +2,7 @@
 
 ## Graphiti
 
-net-graphiti is a rewrite of Graphiti in C#. Files translated from Graphiti's Python source, prompts or tests keep
+graphiti-net is a rewrite of Graphiti in C#. Files translated from Graphiti's Python source, prompts or tests keep
 Graphiti's copyright line and name the upstream file and release they come from. They are listed here as they are
 added.
 

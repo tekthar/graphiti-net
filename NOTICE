@@ -1,12 +1,12 @@
-net-graphiti
-Copyright 2026 net-graphiti contributors
+graphiti-net
+Copyright 2026 graphiti-net contributors
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-net-graphiti is a rewrite in .NET of Graphiti (https://github.com/getzep/graphiti),
+graphiti-net is a rewrite in .NET of Graphiti (https://github.com/getzep/graphiti),
 Copyright 2024 Zep Software, Inc., licensed under the Apache License, Version 2.0.
 Files translated from Graphiti's source code, prompts or tests are listed in
 THIRD-PARTY-NOTICES.md.
 
-Graphiti and Zep are trademarks of Zep Software, Inc. net-graphiti is an independent
+Graphiti and Zep are trademarks of Zep Software, Inc. graphiti-net is an independent
 project. It is not affiliated with, endorsed by, or sponsored by Zep Software, Inc.
