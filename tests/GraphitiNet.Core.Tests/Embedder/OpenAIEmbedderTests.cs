@@ -104,4 +104,17 @@ public class OpenAIEmbedderTests
         Assert.Equal(1536, result.Length);
         Assert.Equal("my-deployment", (string?)handler.Requests[0].Body!["model"]);
     }
+
+    [Fact]
+    public void Config_ToString_does_not_print_the_api_key()
+    {
+        var config = new OpenAIEmbedderConfig { ApiKey = "sk-secret-value", EmbeddingModel = "m", EmbeddingDim = 8 };
+
+        var text = config.ToString();
+
+        Assert.DoesNotContain("sk-secret-value", text, StringComparison.Ordinal);
+        Assert.Contains("EmbeddingDim = 8", text, StringComparison.Ordinal);
+        Assert.Contains("EmbeddingModel = m", text, StringComparison.Ordinal);
+        Assert.Contains("ApiKey = ***", text, StringComparison.Ordinal);
+    }
 }

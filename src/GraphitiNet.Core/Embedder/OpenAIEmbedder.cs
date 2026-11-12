@@ -23,6 +23,24 @@ public record OpenAIEmbedderConfig : EmbedderConfig
 
     /// <summary>The API's base URL. Falls back to <c>OPENAI_BASE_URL</c>, then to OpenAI.</summary>
     public string? BaseUrl { get; init; }
+
+    /// <summary>Prints the members for <see cref="object.ToString"/>, with the API key redacted, so logging the
+    /// settings never logs the key.</summary>
+    /// <param name="builder">Where to print.</param>
+    /// <returns><see langword="true"/>: members were printed.</returns>
+    protected override bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        if (base.PrintMembers(builder))
+        {
+            builder.Append(", ");
+        }
+
+        builder.Append("EmbeddingModel = ").Append(EmbeddingModel)
+            .Append(", ApiKey = ").Append(ApiKey is null ? "" : "***")
+            .Append(", BaseUrl = ").Append(BaseUrl);
+        return true;
+    }
 }
 
 /// <summary>
