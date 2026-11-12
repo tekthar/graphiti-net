@@ -84,7 +84,25 @@ internal static class Qa
         using var gate = new SemaphoreSlim(Concurrency());
         var started = Stopwatch.StartNew();
 
+        // A transient provider error (rate limit, 502) fails the whole AddEpisodeAsync, as in Graphiti itself; retry the
+        // question from scratch in a fresh group rather than lose the run.
         async Task<JsonObject> OneAsync(string id)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    return await AttemptAsync(id, attempt);
+                }
+                catch (Exception e) when (attempt < 2)
+                {
+                    Console.WriteLine($"{id}: attempt {attempt + 1} failed ({e.GetType().Name}); retrying");
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                }
+            }
+        }
+
+        async Task<JsonObject> AttemptAsync(string id, int attempt)
         {
             await gate.WaitAsync();
             try
@@ -95,7 +113,7 @@ internal static class Qa
                 var llm = new OpenAIClient(LlmConfig());
                 var graphiti = new Graphiti(
                     driver, llm, new OpenAIEmbedder(embedderConfig), new OpenAIRerankerClient(LlmConfig()));
-                var groupId = $"lme_qa_{label}_{id}";
+                var groupId = $"lme_qa_{label}_{id}" + (attempt > 0 ? $"_r{attempt}" : "");
                 var sessions = item.GetProperty("haystack_sessions");
                 var dates = item.GetProperty("haystack_dates");
                 var messages = 0;

@@ -107,6 +107,9 @@ def load_questions(dataset_path: str, ids_path: str) -> list[dict]:
         return [data[qid] for qid in json.load(f)]
 
 
+MAX_ATTEMPTS = 3
+
+
 async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'upstream') -> None:
     logging.getLogger('neo4j.notifications').setLevel(logging.ERROR)
     questions = load_questions(dataset_path, ids_path)
@@ -137,9 +140,22 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
     gate = asyncio.Semaphore(int(os.environ.get('QA_CONCURRENCY', '8')))
 
     async def one(item: dict) -> dict:
+        # A transient provider error (rate limit, 502) fails the whole add_episode, as in Graphiti itself; retry the
+        # question from scratch in a fresh group rather than lose the run.
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                return await attempt_one(item, attempt)
+            except Exception as e:  # noqa: BLE001 - any provider error; the last one is re-raised
+                if attempt == MAX_ATTEMPTS - 1:
+                    raise
+                print(f'{item["question_id"]}: attempt {attempt + 1} failed ({type(e).__name__}); retrying', flush=True)
+                await asyncio.sleep(30)
+        raise AssertionError('unreachable')
+
+    async def attempt_one(item: dict, attempt: int) -> dict:
         async with gate:
             graphiti = new_graphiti()
-            group_id = f'lme_qa_{label}_{item["question_id"]}'
+            group_id = f'lme_qa_{label}_{item["question_id"]}' + (f'_r{attempt}' if attempt else '')
             await driver.execute_query('MATCH (n {group_id: $g}) DETACH DELETE n', g=group_id)
             started = time.perf_counter()
             messages = 0
