@@ -237,15 +237,26 @@ public static class SearchUtils
         IGraphDriver driver,
         IReadOnlyList<IReadOnlyList<string>> nodeUuids,
         double minScore = 0,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await EpisodeMentionsRerankerAsync(driver, nodeUuids, minScore, null, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>As the public overload; <paramref name="mentionCounts"/>, when given, replaces the driver's counts
+    /// (search passes readable-mention counts when an access filter is set).</summary>
+    internal static async Task<(IReadOnlyList<string> Uuids, IReadOnlyList<double> Scores)> EpisodeMentionsRerankerAsync(
+        IGraphDriver driver,
+        IReadOnlyList<IReadOnlyList<string>> nodeUuids,
+        double minScore,
+        IReadOnlyDictionary<string, int>? mentionCounts,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(driver);
         ArgumentNullException.ThrowIfNull(nodeUuids);
 
         var (sortedUuids, _) = Rrf(nodeUuids);
-        var counts = sortedUuids.Count == 0
-            ? new Dictionary<string, int>()
-            : await driver.GraphOps.CountEpisodeMentionsAsync(sortedUuids, cancellationToken).ConfigureAwait(false);
+        var counts = mentionCounts
+            ?? (sortedUuids.Count == 0
+                ? new Dictionary<string, int>()
+                : await driver.GraphOps.CountEpisodeMentionsAsync(sortedUuids, cancellationToken).ConfigureAwait(false));
 
         var scores = sortedUuids.ToDictionary(
             uuid => uuid,
@@ -352,6 +363,40 @@ public static class SearchUtils
 
         var episodeUuids = edges.SelectMany(edge => edge.Episodes).Take(limit).ToList();
         return driver.EpisodeNodeOps.GetByUuidsAsync(episodeUuids, cancellationToken);
+    }
+
+    /// <summary>
+    /// For each entity, the ids of the episodes in the entity's group that mention it (graphiti-net helper, used by
+    /// <see cref="IEpisodeAccessFilter"/> and to report an entity's source episodes). One
+    /// <see cref="IEpisodeNodeOperations.GetByEntityNodeUuidAsync"/> call per distinct entity, run concurrently.
+    /// </summary>
+    /// <returns>Every distinct entity id as a key, each with its episode ids in the driver's order.</returns>
+    public static async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetMentioningEpisodeUuidsAsync(
+        IGraphDriver driver,
+        IReadOnlyList<EntityNode> nodes,
+        int? maxCoroutines = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(driver);
+        ArgumentNullException.ThrowIfNull(nodes);
+
+        var distinct = nodes.DistinctBy(node => node.Uuid).ToList();
+        var episodes = await Concurrency.SemaphoreGatherAsync(
+                distinct.Select<EntityNode, Func<Task<IReadOnlyList<EpisodicNode>>>>(node => () =>
+                    driver.EpisodeNodeOps.GetByEntityNodeUuidAsync(node.Uuid, cancellationToken)),
+                maxCoroutines,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        for (var i = 0; i < distinct.Count; i++)
+        {
+            var groupId = distinct[i].GroupId;
+            result[distinct[i].Uuid] =
+                [.. episodes[i].Where(e => e.GroupId == groupId).Select(e => e.Uuid).Distinct(StringComparer.Ordinal)];
+        }
+
+        return result;
     }
 
     /// <summary>The entities mentioned by these episodes, without duplicates.</summary>
