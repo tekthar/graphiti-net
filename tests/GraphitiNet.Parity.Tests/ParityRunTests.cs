@@ -17,9 +17,12 @@ public class ParityRunTests(ITestOutputHelper output)
 
     // customer-support on PostgreSQL is a known gap: PostgreSQL ranks keyword matches with ts_rank, not BM25, so in one
     // fact-resolution step a different fact makes the candidate cut-off than on Neo4j. Tracked in docs/roadmap.md.
+    [Fact(Skip = "Known gap: PostgreSQL keyword ranking (ts_rank, not BM25) changes one fact-resolution candidate set.")]
+    public Task Ingestion_on_postgresql_matches_upstream_on_customer_support() =>
+        Ingestion_on_postgresql_matches_upstream_on_recorded_answers("customer-support");
+
     [SkippableTheory]
     [InlineData("arabic")]
-    [InlineData("customer-support", Skip = "Known gap: PostgreSQL keyword ranking (ts_rank, not BM25) changes one fact-resolution candidate set.")]
     public async Task Ingestion_on_postgresql_matches_upstream_on_recorded_answers(string dataset)
     {
         var connection = Environment.GetEnvironmentVariable("GRAPHITI_TEST_POSTGRES")
