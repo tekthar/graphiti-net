@@ -136,7 +136,8 @@ public sealed class CommunityNode : Node
 /// A saga: an ordered chain of episodes, such as one conversation, with a summary. Episodes join a saga through
 /// <see cref="HasEpisodeEdge"/> and are chained in order by <see cref="NextEpisodeEdge"/>.
 /// </summary>
-/// <remarks>Upstream's private counters for summary diagnostics come with saga summarisation.</remarks>
+/// <remarks>Upstream's private counters for summary diagnostics (<c>_summary_episodes_fetched</c> and so on) are
+/// internal here; <c>Graphiti.SummarizeSagaAsync</c> sets them. They are not stored.</remarks>
 public sealed class SagaNode : Node
 {
     /// <summary>A summary of the saga's episodes.</summary>
@@ -154,4 +155,16 @@ public sealed class SagaNode : Node
 
     /// <summary>The latest episode reference time (<see cref="EpisodicNode.ValidAt"/>) the summary covers.</summary>
     public DateTimeOffset? LastSummarizedEpisodeValidAt { get; set; }
+
+    /// <summary>Episodes the last summary run fetched (upstream <c>_summary_episodes_fetched</c>).</summary>
+    internal int SummaryEpisodesFetched { get; set; }
+
+    /// <summary>Episodes the last summary run sent to the LLM (upstream <c>_summary_episodes_selected</c>).</summary>
+    internal int SummaryEpisodesSelected { get; set; }
+
+    /// <summary>Fetched episodes left for a later run (upstream <c>_summary_episodes_skipped</c>).</summary>
+    internal int SummaryEpisodesSkipped { get; set; }
+
+    /// <summary>UTF-8 bytes of the selected episodes (upstream <c>_summary_selected_episode_bytes</c>).</summary>
+    internal int SummarySelectedEpisodeBytes { get; set; }
 }

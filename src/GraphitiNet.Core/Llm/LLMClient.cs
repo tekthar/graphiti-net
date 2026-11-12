@@ -153,6 +153,8 @@ public abstract partial class LLMClient
             message.Content = CleanInput(message.Content);
         }
 
+        // graphiti-net addition: hosts see the prompt in the ambient call context.
+        using var promptScope = GraphitiCallContext.BeginPrompt(promptName);
         using var activity = StartGenerateActivity(modelSize, resolvedMaxTokens, promptName);
         activity?.SetTag("cache.enabled", CacheEnabled);
 
@@ -170,6 +172,10 @@ public abstract partial class LLMClient
 
         activity?.SetTag("cache.hit", false);
 
+        // graphiti-net addition: the operation's model call gate may refuse the call (ModelCallRefusedException).
+        await GraphitiCallContext.EnsureAllowedAsync(ModelCallKind.Llm, promptName, cancellationToken)
+            .ConfigureAwait(false);
+
         LLMClientResponse response;
         try
         {
@@ -183,6 +189,7 @@ public abstract partial class LLMClient
         }
 
         TokenTracker.Record(promptName, response.InputTokens, response.OutputTokens);
+        GraphitiCallContext.Current?.Usage.Record(promptName, response.InputTokens, response.OutputTokens);
 
         if (cacheKey is not null)
         {

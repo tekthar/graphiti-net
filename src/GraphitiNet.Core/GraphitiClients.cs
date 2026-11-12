@@ -67,7 +67,7 @@ public sealed record GraphitiClients
     /// <param name="attributeExtraction">Whether to add the strict attribute-extraction preamble.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <returns>The parsed JSON response.</returns>
-    public Task<JsonElement> CompletePromptAsync(
+    public async Task<JsonElement> CompletePromptAsync(
         string promptName,
         IReadOnlyDictionary<string, object?> context,
         Type? responseModel = null,
@@ -79,7 +79,11 @@ public sealed record GraphitiClients
     {
         var resolved = PromptLibrary.ResolveResponseModel(promptName, responseModel);
         var messages = PromptLibrary.Build(promptName, context).AsMessages().ToList();
-        return ClientFor(promptName).GenerateResponseAsync(
+
+        // graphiti-net addition: the prompt name is visible in GraphitiCallContext.Current during the call, also to
+        // LLM clients that override GenerateResponseAsync.
+        using var promptScope = GraphitiCallContext.BeginPrompt(promptName);
+        return await ClientFor(promptName).GenerateResponseAsync(
             messages,
             resolved,
             maxTokens,
@@ -87,7 +91,7 @@ public sealed record GraphitiClients
             groupId,
             promptName,
             attributeExtraction,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Like <see cref="CompletePromptAsync"/>, deserialising the response into

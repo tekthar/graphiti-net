@@ -53,6 +53,8 @@ The port follows one tagged Graphiti release at a time and records which one. Th
 
 - [Requirements](docs/requirements.md): data model, ingestion pipeline, temporal model, search, storage, providers
   and verification.
+- [API compatibility](docs/api-compatibility.md): every Python Graphiti call and its graphiti-net equivalent, with a
+  side-by-side quickstart and the graphiti-net additions.
 - [Graph drivers](docs/drivers.md): the storage contract, the in-memory driver, and how to add and test a driver.
 - [PostgreSQL storage](docs/postgresql.md): setup, hosting the tables in your own DbContext, migrations, embedding
   size, languages and how keyword ranking differs from upstream.
