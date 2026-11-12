@@ -28,8 +28,9 @@ Planning. There is no code yet. This repository holds the requirements the port 
   time.
 - **Your own types**: describe the entities and relationships you care about as C# classes or records, or let the
   structure emerge from the data.
-- **Pluggable providers**: LLMs and embedders through Microsoft.Extensions.AI, and graph storage on Neo4j or on
-  PostgreSQL with pgvector through EF Core.
+- **No graph database needed**: the graph lives in the database you already run, through EF Core. PostgreSQL with
+  pgvector is the default, and SQL Server comes next.
+- **Pluggable providers**: LLMs and embedders through Microsoft.Extensions.AI.
 
 It's a library, not a server. You bring the database, the LLM and the embedder, and build your service around it.
 
@@ -50,8 +51,8 @@ latest release when this repository was created is
 
 ## Documentation
 
-- [Requirements](docs/requirements.md): data model, ingestion pipeline, temporal model, search, providers and
-  verification.
+- [Requirements](docs/requirements.md): data model, ingestion pipeline, temporal model, search, storage, providers
+  and verification.
 - [Development environment](docs/development.md): services, settings and the Claude Code cloud environment.
 
 ## Contributing

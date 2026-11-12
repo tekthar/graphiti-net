@@ -7,8 +7,8 @@ What you need to build the port and run parity tests against Python Graphiti.
 | Service | Used for |
 | --- | --- |
 | .NET 10 SDK | Building and testing the port |
-| Neo4j 5.26 | The main graph driver (`docker run neo4j:5.26`) |
-| PostgreSQL 16 with pgvector | The EF Core backend |
+| PostgreSQL 16 with pgvector | The port's default storage, through EF Core |
+| Neo4j 5.26 | Python Graphiti's database for parity runs (`docker run neo4j:5.26`) |
 | Python with `graphiti-core` | The reference for parity runs. Install the pinned baseline release, not the latest |
 | An LLM and an embedding provider | Ingestion and search, for both the port and Python Graphiti |
 
@@ -20,9 +20,9 @@ Both the port and Python Graphiti read the same settings, so a parity run compar
 | --- | --- | --- |
 | `OPENAI_API_KEY` | (your key) | LLM and embeddings for both Graphiti and the port |
 | `ANTHROPIC_API_KEY` | (your key) | Claude as the test LLM, if used |
-| `NEO4J_URI` | `bolt://localhost:7687` | Graph database |
-| `NEO4J_USER` / `NEO4J_PASSWORD` | `neo4j` / a dev-only password | Graph database login (local container only) |
-| `ConnectionStrings__Graph` | `Host=localhost;Database=graphiti;Username=postgres` | EF Core backend |
+| `ConnectionStrings__Graph` | `Host=localhost;Database=graphiti;Username=postgres` | The port's database (EF Core) |
+| `NEO4J_URI` | `bolt://localhost:7687` | Python Graphiti's database for parity runs |
+| `NEO4J_USER` / `NEO4J_PASSWORD` | `neo4j` / a dev-only password | Its login (local container only) |
 | `LLM_MODEL` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `gpt-5-mini` / `text-embedding-3-small` / `1536` | Pinned models, identical for Python and .NET |
 | `SEMAPHORE_LIMIT` | `10` | LLM concurrency, shared by both versions |
 | `GRAPHITI_TELEMETRY_ENABLED` | `false` | Turn off Python Graphiti telemetry |
@@ -51,11 +51,11 @@ set -e
 curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
 bash /tmp/dotnet-install.sh --channel 10.0 --install-dir /usr/share/dotnet
 ln -sf /usr/share/dotnet/dotnet /usr/local/bin/dotnet
-# pgvector for the EF Core backend
+# pgvector for the port's default storage (EF Core on PostgreSQL)
 apt-get update && apt-get install -y postgresql-16-pgvector || true
 # Python Graphiti, the reference for parity runs (pin to the baseline release once chosen)
 pip install graphiti-core || true
-# Pre-pull Neo4j so it is cached on disk
+# Pre-pull Neo4j, which Python Graphiti uses in parity runs, so it is cached on disk
 docker pull neo4j:5.26 || true
 ```
 

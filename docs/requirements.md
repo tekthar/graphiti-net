@@ -12,6 +12,9 @@ Graphiti is an open-source Python library (Apache 2.0) that turns raw data into 
 can query. It is the graph engine inside Zep. A .NET port must reproduce its library, not its servers: you supply the
 database, LLM and embedder, and build the service around it.
 
+Unlike upstream, the port stores the graph in a relational database through EF Core by default, so it needs no graph
+database. See [Storage](#storage-ef-core-by-default).
+
 What it gives an agent:
 
 - **Memory that updates incrementally:** new data merges into the graph immediately, with no batch rebuild.
@@ -36,7 +39,7 @@ The port needs five record types. Everything derived points back to an episode.
 | Community | A cluster of related entities with a summary | Member entities, summary text |
 
 **Group id** partitions the graph, for example one graph per user or tenant. Every read and write is scoped by it, so
-it is the natural hook for multi-tenancy in .NET.
+it is the natural hook for multi-tenancy in .NET: in EF Core, a global query filter on the group id column.
 
 ## Ingestion pipeline
 
@@ -115,10 +118,54 @@ Four interfaces sit behind the core, each swappable.
 | LLM client | OpenAI (default), Azure OpenAI, Anthropic, Gemini, Groq, any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio) | Must return reliable structured JSON; small local models often fail |
 | Embedder | OpenAI, Azure OpenAI, Gemini, Voyage, OpenAI-compatible | Microsoft.Extensions.AI covers most of these |
 | Cross-encoder (reranker) | OpenAI, Gemini, local model | Optional |
-| Graph driver | Neo4j 5.26, FalkorDB, Amazon Neptune; Kuzu deprecated | Needs graph, vector and full-text search |
+| Graph driver | Neo4j 5.26, FalkorDB, Amazon Neptune; Kuzu deprecated | Default is EF Core on PostgreSQL with pgvector (see [Storage](#storage-ef-core-by-default)). Needs vector and full-text search plus short graph traversals |
 
 Using Microsoft.Extensions.AI abstractions for the LLM and embedder would make the port feel native and
 provider-neutral.
+
+## Storage: EF Core by default
+
+The port stores the graph in a relational database through EF Core. Teams that already run PostgreSQL or SQL Server
+don't have to add, learn and operate a graph database: agent memory becomes a few more tables in a database they
+already back up and monitor.
+
+This works because Graphiti's queries are shallow. Upstream caps graph search at 3 hops (`MAX_SEARCH_DEPTH` in
+`graphiti_core/search/search_utils.py`). Everything else is lookups by id, vector search and keyword search.
+
+| What Graphiti needs | PostgreSQL (default) | SQL Server 2025 / Azure SQL (second) |
+| --- | --- | --- |
+| Episodes, entities, facts, communities | Tables with foreign keys | Same |
+| Vector search | pgvector with HNSW indexes, through `Pgvector.EntityFrameworkCore` | Native `vector` type and `VectorDistance` in EF Core 10 |
+| Keyword search | Built-in full-text search (`tsvector`); a BM25 extension such as ParadeDB `pg_search` where the host allows it | Full-text index |
+| Graph search (up to 3 hops) | Recursive SQL query | Recursive SQL query |
+| Group id isolation | A group id column and an EF Core global query filter; optionally row-level security | Same |
+
+Requirements:
+
+- **PostgreSQL first, SQL Server second.** Keep the graph-driver interface so other backends, such as Neo4j for teams
+  that already run it, can be added later.
+- **Two ways to host the tables:** a `ModelBuilder` extension, so the host adds them to its own `DbContext` and
+  migrations, or a standalone `DbContext` in its own schema.
+- **Migrations, not first-run setup:** EF Core migrations create the tables, vector indexes, full-text indexes and
+  uniqueness constraints.
+- **One search module per database:** LINQ covers reads and writes. Vector search, full-text search and recursive
+  graph queries are written in SQL for each database.
+- **Embedding size is part of the schema:** the vector column's dimension is set in the migration, so changing the
+  embedding model needs a migration. pgvector's HNSW index supports up to 2,000 dimensions for `vector`; larger models
+  (for example 3,072 dimensions) need `halfvec`.
+
+Known differences from upstream:
+
+- **No upstream SQL driver to copy.** Upstream ships only graph-database drivers (Neo4j, FalkorDB, Amazon Neptune,
+  Kuzu), so every Cypher query is rewritten in SQL. These queries need the most testing.
+- **Keyword ranking differs.** Neo4j ranks full-text matches with BM25 (through Lucene); PostgreSQL's built-in ranking
+  does not. Search results will differ slightly from Python Graphiti. Keyword search is one input to the fused
+  ranking, so the effect should be small, and the LongMemEval gate catches a real drop.
+- **Very large graphs.** A graph database pulls ahead on very large, densely connected graphs searched many hops deep.
+  Graphiti's capped queries mostly avoid this.
+
+Not chosen: Apache AGE adds Cypher to PostgreSQL and would let the port reuse upstream's queries, but many managed
+PostgreSQL services don't offer it.
 
 ## Servers and integrations
 
@@ -135,9 +182,10 @@ Both upstream servers have no authentication, authorisation or prompt-injection 
 ## Non-functional requirements and .NET notes
 
 - **Async throughout:** the pipeline is concurrent; use async/await with a SemaphoreSlim for the LLM concurrency limit.
-- **Schema setup:** create indexes and constraints on first run (vector, full-text, uniqueness).
-- **Storage abstraction:** keep a graph-driver interface so Neo4j and an EF Core backend (PostgreSQL with pgvector, or
-  SQL Server vector) can both be offered.
+- **Schema setup:** EF Core migrations create tables and indexes (vector, full-text, uniqueness). Upstream creates them
+  on first run instead.
+- **Storage abstraction:** keep a graph-driver interface. EF Core on PostgreSQL is the default; SQL Server and graph
+  databases such as Neo4j can be added behind the same interface.
 - **Security in the host service:** authentication, authorisation, tenant isolation by group id, and input controls
   against prompt injection.
 - **Parity tests:** run the same episodes through Python Graphiti and the port, then compare extracted entities, facts
@@ -159,7 +207,8 @@ numbers are for Zep, the commercial service, with specific models.
 1. **Unit tests:** port Graphiti's own test suite (the repo's tests folder) so each component behaves the same.
 2. **Parity runs:** feed identical episodes into Python Graphiti and the port with the same LLM, embedding model and
    settings. Compare extracted entities, facts, invalidations and search results. Pin model versions and use
-   temperature 0, since LLM randomness causes small differences even with correct code.
+   temperature 0, since LLM randomness causes small differences even with correct code. Python Graphiti runs on Neo4j
+   and the port on PostgreSQL, the setup users will run, so expect small differences in keyword ranking.
 3. **Benchmark runs:** run the same benchmark through both versions. Target: the port scores within 1–2 points of
    Python Graphiti.
 
