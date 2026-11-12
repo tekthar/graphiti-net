@@ -8,7 +8,7 @@ graphiti-net differs from upstream's Neo4j driver, and how to add and test a dri
 
 | Driver | Package | Notes |
 | --- | --- | --- |
-| In-memory (`InMemoryGraphDriver`) | `GraphitiNet.Core` | Zero-install: tests, demos, small apps. Thread-safe, one lock. BM25 full-text, exact cosine similarity. Can save to and load from a JSON file. |
+| In-memory (`InMemoryGraphDriver`) | `GraphitiNet` | Zero-install: tests, demos, small apps. Thread-safe, one lock. BM25 full-text, exact cosine similarity. Can save to and load from a JSON file. |
 | PostgreSQL (`PostgresDriver`) | `GraphitiNet.PostgreSql` | The default for production: EF Core, pgvector, built-in full-text search. See [postgresql.md](postgresql.md). |
 | SQLite | planned | |
 
