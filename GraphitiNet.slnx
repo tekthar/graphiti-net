@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GraphitiNet.Core/GraphitiNet.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GraphitiNet.Core.Tests/GraphitiNet.Core.Tests.csproj" />
+  </Folder>
+</Solution>

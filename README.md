@@ -15,7 +15,8 @@ it came from.
 
 ## Status
 
-Planning. There is no code yet. This repository holds the requirements the port is built against:
+Early development. The core records and utilities are in place; storage, the ingestion pipeline and search are
+next. See the [roadmap](docs/roadmap.md) and the requirements the port is built against:
 [docs/requirements.md](docs/requirements.md).
 
 ## What it will do

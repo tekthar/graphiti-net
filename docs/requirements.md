@@ -28,7 +28,7 @@ upstream version.
 
 ## Core data model
 
-The port needs five record types. Everything derived points back to an episode.
+The port needs eight record types. Everything derived points back to an episode.
 
 | Record | What it holds | Key fields to port |
 | --- | --- | --- |
@@ -37,6 +37,9 @@ The port needs five record types. Everything derived points back to an episode.
 | Entity edge (fact) | A triplet: entity, relationship, entity | Fact text, fact embedding, validity window, links to source episodes |
 | Episodic edge | Links an episode to each entity it mentions | Episode id, entity id |
 | Community | A cluster of related entities with a summary | Member entities, summary text |
+| Community edge | Links a community to a member entity | Community id, entity id |
+| Saga | An ordered chain of episodes, such as one conversation, with a summary | Summary, first and last episode, summary watermarks |
+| Has-episode and next-episode edges | Put an episode in a saga, and chain the saga's episodes in order | Saga id, episode ids |
 
 **Group id** partitions the graph, for example one graph per user or tenant. Every read and write is scoped by it, so
 it is the natural hook for multi-tenancy in .NET: in EF Core, a global query filter on the group id column.
@@ -59,7 +62,7 @@ and the porting difficulty sit.
 Also required:
 
 - **Bulk ingest** of many episodes at once, for backfills.
-- **Concurrency limit** on LLM calls (upstream default 10), to avoid provider rate limits.
+- **Concurrency limit** on LLM calls (upstream default 20, `DEFAULT_SEMAPHORE_LIMIT`), to avoid provider rate limits.
 - **Optional community building:** cluster entities and summarise each cluster.
 - **Delete an episode** and clean up what only it produced.
 - **Overridable prompts** per instance, with fixed response schemas, and optional routing of individual prompts to

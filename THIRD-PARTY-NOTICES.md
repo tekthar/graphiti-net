@@ -6,9 +6,20 @@ graphiti-net is a rewrite of Graphiti in C#. Files translated from Graphiti's Py
 Graphiti's copyright line and name the upstream file and release they come from. They are listed here as they are
 added.
 
-- None yet.
+Baseline: Graphiti v0.31.2.
 
-Source: https://github.com/getzep/graphiti (baseline release not pinned yet)
+| graphiti-net file | Upstream file |
+| --- | --- |
+| `src/GraphitiNet.Core/Errors.cs` | `graphiti_core/errors.py` |
+| `src/GraphitiNet.Core/Models/Nodes.cs` | `graphiti_core/nodes.py` |
+| `src/GraphitiNet.Core/Models/Edges.cs` | `graphiti_core/edges.py` |
+| `src/GraphitiNet.Core/Utils/DateTimeUtils.cs` | `graphiti_core/utils/datetime_utils.py` |
+| `src/GraphitiNet.Core/Utils/Validation.cs` | `graphiti_core/helpers.py` |
+| `src/GraphitiNet.Core/Llm/TokenUsageTracker.cs` | `graphiti_core/llm_client/token_tracker.py` |
+| `tests/GraphitiNet.Core.Tests/Llm/TokenUsageTrackerTests.cs` | `tests/llm_client/test_token_tracker.py` |
+| `tests/GraphitiNet.Core.Tests/Models/NodeLabelSecurityTests.cs` | `tests/test_node_label_security.py` |
+
+Source: https://github.com/getzep/graphiti/tree/v0.31.2
 
 ```
 Copyright 2024, Zep Software, Inc.

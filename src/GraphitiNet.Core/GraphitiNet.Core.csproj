@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GraphitiNet</RootNamespace>
+    <Description>Temporal knowledge graphs for AI agents: core records, interfaces and utilities.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="GraphitiNet.Core.Tests" />
+  </ItemGroup>
+
+</Project>

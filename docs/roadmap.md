@@ -21,10 +21,9 @@ Rough size of what we port, excluding the FalkorDB, Kuzu and Neptune drivers:
 
 Found while surveying the baseline. Fix these in [requirements.md](requirements.md) before writing code.
 
-1. **Sagas are missing.** Upstream has `SagaNode`, `HasEpisodeEdge` and `NextEpisodeEdge`, which chain episodes in
-   order, and `Graphiti.summarize_saga`. The requirements list five record types; upstream has eight.
-2. **The concurrency default is wrong.** The requirements say upstream's LLM concurrency limit is 10.
-   `DEFAULT_SEMAPHORE_LIMIT` in `graphiti_core/helpers.py` is 20.
+1. ~~**Sagas are missing.**~~ Fixed: the requirements now list all eight record types. `Graphiti.summarize_saga`
+   is still to port.
+2. ~~**The concurrency default is wrong.**~~ Fixed: upstream's `DEFAULT_SEMAPHORE_LIMIT` is 20.
 3. **Newer features aren't covered.** We need to decide which are in the first release and which wait:
    - combined node and edge extraction (`utils/maintenance/combined_extraction.py`,
      `prompts/extract_nodes_and_edges.py`)
@@ -32,6 +31,22 @@ Found while surveying the baseline. Fix these in [requirements.md](requirements.
    - `add_triplet`
    - the decisions and GLiNER2 LLM clients (`llm_client/openai_decisions_client.py`, `llm_client/gliner2_client.py`)
    - token tracking and the LLM response cache (`llm_client/token_tracker.py`, `llm_client/cache.py`)
+
+## Progress
+
+Done:
+
+- Solution skeleton: `GraphitiNet.slnx`, `Directory.Build.props` (warnings as errors, recommended analyzers),
+  central package management, `global.json` pinning .NET 10.
+- `GraphitiNet.Core`, the layer with no dependencies:
+  - all eight record types (`Models/Nodes.cs`, `Models/Edges.cs`), as plain classes; storage moves to the graph
+    driver instead of `save()` methods on the records
+  - errors, UTC helpers, group id and node label validation
+  - the token usage tracker
+- Unit tests, including ports of `test_token_tracker.py` and `test_node_label_security.py`.
+- CI: build and unit tests on GitHub Actions.
+
+Next: the graph-driver interface and the EF Core model (Phase 1).
 
 ## Phases
 
