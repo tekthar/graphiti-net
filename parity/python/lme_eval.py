@@ -144,7 +144,7 @@ async def judge(baseline_path: str, candidate_path: str, report_path: str) -> No
     report['score'] = total / len(candidate)
     with open(report_path, 'w', encoding='utf-8') as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
-    print(f'score {report["score"]:.3f} (share of messages where graphiti-net is not worse than Python Graphiti)')
+    print(f'score {report["score"]:.3f} (share of messages where the candidate is not worse than the baseline)')
     for user, score in report['users'].items():
         print(f'  {user}: {score:.3f}')
 

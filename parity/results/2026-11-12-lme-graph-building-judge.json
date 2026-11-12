@@ -1,0 +1,226 @@
+{
+  "users": {
+    "lme_oracle_experiment_user_0": 0.6666666666666666,
+    "lme_oracle_experiment_user_1": 0.25,
+    "lme_oracle_experiment_user_2": 0.5
+  },
+  "decisions": [
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 0,
+      "candidate_is_worse": false,
+      "reasoning": "The candidate is higher quality overall. It extracts explicit structured facts with dates and relationships (planning car detailing, first service on 2023-03-15, great service experience), whereas the baseline only summarizes these in the user node and creates no entity edges. Although the candidate has some awkward phrasing and duplicates the car entity into 'my car' and 'my car (serviced)', it preserves more actionable graph information. Therefore the baseline is not better."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 1,
+      "candidate_is_worse": false,
+      "reasoning": "The baseline is higher quality because it extracts specific entities (Yelp, Google Reviews, Facebook Reviews, IDA, ASE) and explicit recommendation edges from the assistant's advice. The candidate only creates a single assistant node with a broad summary and no entity edges, losing structured relationships. Although the candidate summary captures more of the advice in prose, the baseline provides richer graph structure for the concrete extractable entities."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 2,
+      "candidate_is_worse": false,
+      "reasoning": "The baseline is not better. It only links the episode to the user and preserves prior summary, but it fails to extract the new information that the user is considering wax/detailing every 3-4 months for appearance and paint protection. The candidate captures these relevant new facts with user-level summaries and edges. Although it slightly overstates some benefits as factual rather than framed as the user's question, it is much more complete and higher quality overall."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 3,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline is higher quality because it extracts the key recommendations from the current message: waxing every 3-4 months, washing every 1-2 weeks, and detailing every 3-4 months, with appropriate relationships to the assistant. The candidate only retains a generic assistant node summary from the prior discussion and extracts no entity edges or facts from the current message, missing the main actionable information."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 4,
+      "candidate_is_worse": false,
+      "reasoning": "The candidate extraction is better or at least not worse. Both capture the key fact that the user gets around 32 mpg, but the candidate also captures the comparative fact that this mileage is better than the user's old car. It has cleaner episodic/entity links without the baseline's duplicate user node/episodic edge, and the richer user summary includes relevant prior context. The baseline misses the old-car comparison and contains duplication."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 5,
+      "candidate_is_worse": false,
+      "reasoning": "The baseline is better. It captures the assistant's acknowledgement of the user's 32 mpg and creates a related entity/edge for that gas mileage, which is the main factual content in the message. The candidate extracts no new edges and only retains an older assistant summary about finding detailers, missing the current message's gas mileage/tracking content entirely."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 6,
+      "candidate_is_worse": false,
+      "reasoning": "The candidate is at least as good as the baseline. Both capture the key fact that the user uses the rewards program at the Shell gas station near their office. The candidate additionally captures relevant facts that the user earns points in the rewards program and that the Shell station offers a rewards program, and it preserves more useful prior context in the user summary. These additions are supported by the message and not materially harmful."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 7,
+      "candidate_is_worse": false,
+      "reasoning": "The candidate extraction is higher quality. The baseline incorrectly states that the assistant recommends using the Shell rewards program, while the message actually gives balanced advice comparing focusing on one station versus multiple stations. The candidate captures this comparison and the pros/cons framing more accurately, including relevant entities for one gas station and multiple stations. Since the baseline is not better, the answer is False."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 8,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline extraction is higher quality. It correctly creates distinct entities for 50,000 points, the $500 gift card to a car accessories store, the store, and each purchased item: new car cover, floor mats, and steering wheel cover. The candidate has several entity-linking errors: it links “user redeemed 50,000 points” to a generic/reused “rewards program” node instead of a points entity, incorrectly uses “my car” as the target for purchasing a new car cover, and incorrectly uses “one gas station” as the target for purchasing floor mats. It also omits separate proper item nodes for new car cover and floor mats. Therefore the candidate is worse than the baseline."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 9,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline extraction is higher quality. It correctly preserves the key redemption fact as 50,000 points exchanged for a $500 gift card, and then links the gift card to the actual purchased items: new car cover, floor mats, and steering wheel cover. The candidate omits a distinct 50,000 points entity/edge in the extracted edges, duplicates entity nodes with the same UUID, and has an incorrect USED_TO_PURCHASE edge from the $500 gift card to the car accessories store with the fact that it was used to purchase a car cover, rather than linking to a car cover entity. Overall the candidate is less complete and contains structural/factual extraction errors."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 10,
+      "candidate_is_worse": false,
+      "reasoning": "Baseline is slightly better. Both capture the key new facts: the user likes the new accessories, is considering wax/detailing soon, and asks for help finding a detailer. However, the candidate reuses older 'every 3-4 months' consideration facts for the wax/detailing edges instead of accurately representing the current message's 'soon' intent, while the baseline correctly records plans to get a car wax and detailing soon. The candidate also loses the user's explicit happiness with the accessories in the edge fact, though it appears in the user summary. Baseline has a minor directional/label issue on the help-seeking edge, but overall its extracted facts from the current message are more accurate."
+    },
+    {
+      "user": "lme_oracle_experiment_user_0",
+      "message": 11,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline extraction is higher quality because it captures the concrete entities and relationships explicitly mentioned in the assistant message: Yelp, Google Reviews, Facebook Reviews, IDA, and ASE, along with recommendation edges. The candidate only keeps a single assistant node with a summary and no entity edges, losing structured information from the message. Although the baseline assistant summary contains some unrelated prior-conversation facts, its extraction of this message is substantially more complete and structured than the candidate."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 0,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline and candidate extractions are nearly identical in quality. Both correctly identify the user entity and summarize that the user wants to get organized, manage tasks, prioritize, and avoid procrastination with app/tool recommendations. No meaningful difference in extracted entities or relationships."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 1,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline and candidate extractions are nearly identical in structure, coverage, entities, and relationships. Both capture all recommended apps/tools and the assistant's recommendation facts accurately. Minor wording differences in summaries/facts do not materially affect quality. Per instruction, when quality is nearly identical, return True."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 2,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline and candidate extractions are nearly identical in structure and content. Both only link the episode to the user entity and preserve a similar prior summary, but neither updates the user summary with the new information that the user is implementing prioritization and task-chunking strategies and finding them helpful. Since quality is essentially equal, the instructions say to return True."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 3,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline and candidate extractions are nearly identical: both capture the episode content, link it to an assistant entity, and summarize the prior assistant recommendations rather than extracting much from the current message. Neither is meaningfully better for the current message; the candidate summary is slightly less complete only in wording, but quality is effectively the same. Per instruction, near-identical quality should return True."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 4,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline and candidate extractions are nearly identical: both capture the episode content, link it to the user entity, and provide a similar summary of the prior user need. Neither extraction adds the new specific preference/need about minimizing distractions during concentration-heavy work. Per instruction, when quality is nearly identical, return True."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 5,
+      "candidate_is_worse": false,
+      "reasoning": "The candidate extraction is higher quality. The baseline only links the episode to the assistant entity and leaves no extracted entity edges or new nodes for the specific distraction-minimization advice in the message. The candidate captures several relevant recommendations from the message, including noise-cancelling headphones, Freedom, SelfControl, StayFocusd, Pomodoro Timer, deep breathing, meditation, and a do-not-disturb sign, with corresponding facts. Although it is not exhaustive and has some direction inconsistency in RECOMMENDED_BY edges, it preserves substantially more useful graph information than the baseline."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 6,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline is slightly higher quality. It captures the central durable fact that the user is distracted by social media and mindlessly scrolls while doing concentration-heavy work. The candidate captures the same main fact but adds an extra entity, \"feeds,\" and a separate MINDLESSLY_SCROLLS edge, which is somewhat redundant and less useful as a standalone entity because \"feeds\" is not an independent salient entity apart from social media. This makes the candidate a bit noisier than the baseline."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 7,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline is not better. Both extractions contain several entity-linking errors, but the candidate is at least comparable and slightly preferable in some places. The baseline incorrectly attaches Freedom to RescueTime, SelfControl to Google Calendar, Cold Turkey to Wunderlist, LeechBlock to Habitica, Moment to Evernote, and Google News to Pomodoro Timer. The candidate also misattaches Cold Turkey, LeechBlock, Moment, Apple News, and Google News to wrong pre-existing nodes, but it correctly has a Freedom node and includes more relevant context from prior distraction advice. Since the two are broadly similar in quality and the instructions say to return True when nearly identical, candidate_is_worse is True."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 8,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline is higher quality because it captures both key new facts from the message: the user still checks their phone out of habit and the user is using/scheduling social media breaks to help stay focused. The candidate captures the phone-checking habit but omits the explicitly mentioned implementation of website blockers/social media breaks, especially the scheduling social media breaks fact. Although the baseline has a duplicated user node/episodic edge and does not separately model website blockers, it preserves more relevant information from the message than the candidate."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 9,
+      "candidate_is_worse": false,
+      "reasoning": "The candidate is higher quality overall. It extracts several concrete entities and facts from the current message, such as using a phone dock, a phone case with a timer/lock, and tracking phone usage with Screen Time. The baseline mostly preserves only an assistant summary from previous context and extracts no entity edges from the current message. Although the candidate has some errors/noise, such as attaching the Screen Time fact to the Pomofocus node and including an unrelated RescueTime edge, it captures more relevant graph structure from the message than the baseline."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 10,
+      "candidate_is_worse": false,
+      "reasoning": "The baseline is higher quality. It extracts the workshop and the local community center as separate entities and represents the held-at relationship, which is more normalized and useful than the candidate's single combined entity. Both capture that the user attended the Effective Time Management workshop last Saturday, but the baseline preserves the location as a distinct node and relation. The candidate is slightly more explicit in the user summary, but overall its graph structure is less granular."
+    },
+    {
+      "user": "lme_oracle_experiment_user_1",
+      "message": 11,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline and candidate extract essentially the same entities and RECOMMENDS relationships from the message. Both capture all listed learning platforms, specialized resources, podcasts, and websites accurately. The only notable difference is the assistant entity summary: the baseline updates it to include the new learning-resource recommendations, while the candidate assistant summary remains focused mostly on prior productivity/social media advice and omits the new message's learning resources. Thus the baseline is slightly higher quality, so the candidate is worse."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 0,
+      "candidate_is_worse": false,
+      "reasoning": "The candidate extraction is higher quality. It captures specific entities (bike rack, car, bike, gears) and explicit relationships with appropriate facts and timing, including the mid-February repair/gear issue. The baseline only creates a single user node with a summary and no fact edges, so it is less structured and less useful. Minor duplication in the candidate user summary does not outweigh its richer, accurate extraction."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 1,
+      "candidate_is_worse": true,
+      "reasoning": "The two extractions are nearly identical in structure and captured entities: assistant plus the four bike rack brands Thule, Yakima, Saris, and Kuat. The only substantive difference is relation wording: baseline says the assistant mentioned them as popular options, while candidate says the assistant recommends them as popular bike rack brands. Since the message says the assistant is providing recommendations and lists them as popular brands, the candidate wording is at least as appropriate. Per instructions, nearly identical quality should return True."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 2,
+      "candidate_is_worse": false,
+      "reasoning": "The baseline captures more of the user's stated preferences, including wanting a rack for a Toyota Corolla and preferring easy installation/removal. The candidate only extracts the hybrid bike, carrying one bike, and car model, missing the easy install/remove preference and price/value openness. However, the baseline has a notable error: it uses the existing 'Thule' node as the target for Toyota Corolla/car-rack facts, which is semantically wrong. Despite that, it preserves more relevant facts from the message than the candidate, so the baseline is higher quality overall."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 3,
+      "candidate_is_worse": false,
+      "reasoning": "The baseline is higher quality overall. It extracts more of the specific rack suitability information from the assistant message, including suitability for the user's hybrid bike and conditional hitch-receiver requirements. The candidate is cleaner in using generic car/bike nodes and avoids one baseline error where Toyota Corolla facts are incorrectly attached to the Thule node, but it is less complete: it omits several suitability facts for the hybrid bike and does not create/use specific product nodes as well. Despite some duplication and entity-target mistakes, the baseline captures more relevant details from the message."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 4,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline is higher quality. It captures all key facts from the message: the user prefers/leans toward a hitch-mounted rack, asks about installation for both Saris Bones and Kuat Transfer, and is concerned because they are not handy with tools. The candidate omits the explicit Saris installation-information request and the low tool confidence as separate facts, and it overstates that the user is specifically considering the Saris Bones for being easy to install/remove rather than generally leaning toward hitch-mounted racks. Baseline has one questionable edge targeting the Thule Evo while stating a hitch-mounted preference, but overall it is more complete and accurate."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 5,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline is substantially richer and more precise. It extracts many relevant installation details from the message: tools needed, hitch adapter use, receiver sizes, Toyota Corolla compatibility, and support resources like manuals, YouTube, and local bike shops. The candidate captures only a few high-level facts and misses most procedural details. It also has some less precise modeling, such as using a generic 'car' node instead of Toyota Corolla and saying Kuat is compatible with Class I receivers, which is not explicitly stated in the message. Therefore the baseline extraction is higher quality, so the candidate is worse."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 6,
+      "candidate_is_worse": true,
+      "reasoning": "Baseline is slightly higher quality. It captures the current message's main new fact (user is deciding between Saris Bones and Kuat Transfer) and adds a useful relationship that Saris Bones is an alternative to Kuat Transfer. The candidate is close, but has more duplication and some awkward/inaccurate phrasing such as 'IS_BIAS_TOWARDS' and implying the user is specifically considering Saris for being easy to install and remove. Candidate also carries over older installation-question edges that are less relevant to the new message. Since baseline is better, candidate_is_worse is true."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 7,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline extraction is higher quality. It captures the message with more granular, specific edges for each Saris Bones and Kuat Transfer advantage, plus key comparative facts such as integrated lock vs external locks, lower price, and weight capacity. The candidate is mostly accurate but more compressed, with fewer edges and it omits some specific distinctions from the message, especially the security comparison that the Bones relies on external locks. Therefore the candidate is worse than the baseline."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 8,
+      "candidate_is_worse": true,
+      "reasoning": "The baseline is slightly higher quality. It captures all key facts from the message: the user is leaning toward the Kuat Transfer, values the integrated cable lock, has a heavier hybrid bike, and connects the Kuat Transfer's higher weight capacity to that bike. It also explicitly includes the product feature edge for the integrated cable lock and a separate hybrid bike entity. The candidate captures the main preferences too, but it uses a more generic 'bike' entity instead of 'hybrid bike' and includes a less precise inferred edge that the bike is intended to be carried on the Kuat Transfer. Since the prompt says to return True if the baseline is better, candidate_is_worse is True."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 9,
+      "candidate_is_worse": false,
+      "reasoning": "The baseline is slightly higher quality. Both extractions capture the main facts about the Kuat Transfer, Pivot System components, wheel cradles, frame clamp, and integrated cable lock. However, the baseline’s Kuat summary is more complete, explicitly including scratch protection, movement reduction, compatibility/installation context, and the rack’s use for heavier bikes. The candidate usefully creates a separate Pivot System node, but it also adds a less directly supported edge that the ratcheting arm and frame clamp work together, whereas the message specifically says the ratcheting arm and wheel cradles work together and the frame clamp adds stability. Overall the baseline is a bit more accurate and comprehensive."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 10,
+      "candidate_is_worse": false,
+      "reasoning": "Baseline is somewhat higher quality. It captures the new message's key repair information and also adds useful edges tying the repair to the bike/hybrid bike, the user's continued preference for the Kuat Transfer, and the intended carrying relationship. Candidate captures the repair and preference but omits the explicit new detail that the bike shop fixed it and it has run smoothly since as an edge, and its repair edge points only to a generic bike rather than the bike shop or specific repaired condition. Baseline has some duplication and an imperfect 'local bike shop' naming, but overall represents more of the message content and relationships."
+    },
+    {
+      "user": "lme_oracle_experiment_user_2",
+      "message": 11,
+      "candidate_is_worse": false,
+      "reasoning": "The baseline is slightly higher quality. The new message contains only a light acknowledgment that the bike is running smoothly after repair and a return to discussing the Kuat Transfer. The candidate captures those new facts, but it also creates an unnecessary entity for the metaphor “trusty steed,” which should simply refer to the user's bike rather than become a standalone entity. The baseline avoids that spurious entity and maintains a more coherent Kuat summary. Although the candidate’s new edge about the assistant endorsing the Kuat Transfer is more directly tied to the message, the baseline’s overall graph is cleaner and less noisy."
+    }
+  ],
+  "score": 0.47222222222222215
+}

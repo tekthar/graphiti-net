@@ -74,3 +74,11 @@ NEO4J_PASSWORD=<dev password> LLM_MODEL=gpt-5-mini EMBEDDING_MODEL=text-embeddin
 
 The recordings were made with `gpt-5-mini` for both model sizes and `text-embedding-3-small` at 1,024 dimensions;
 each recording file stores its settings.
+
+## Graph-building evaluation (live models)
+
+Graphiti's own evaluation, `tests/evals/eval_e2e_graph_building.py`, compares a candidate's graphs with a baseline's
+on LongMemEval conversations, using an LLM judge. `parity/python/lme_eval.py build` makes the baseline with Python
+Graphiti, `tools/GraphitiNet.Eval` makes graphiti-net's, and `lme_eval.py judge` scores them. Results are in
+[results/](results/); always run a second upstream build as a control, since the judge must pick a side even between
+two runs of the same pipeline.
