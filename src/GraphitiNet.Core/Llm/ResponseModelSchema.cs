@@ -36,23 +36,27 @@ internal static class ResponseModelSchema
     };
 
     /// <summary>The schema name sent to providers; upstream uses the Pydantic class name.</summary>
-    public static string GetName(Type responseModel) => responseModel.Name;
+    public static string GetName(Type responseModel)
+    {
+        ArgumentNullException.ThrowIfNull(responseModel);
+        var display = (System.ComponentModel.DisplayNameAttribute?)Attribute.GetCustomAttribute(
+            responseModel, typeof(System.ComponentModel.DisplayNameAttribute));
+        return display?.DisplayName is { Length: > 0 } name ? name : responseModel.Name;
+    }
 
     /// <summary>The JSON schema of <paramref name="responseModel"/>, with references inlined.</summary>
     public static JsonObject GetSchema(Type responseModel)
     {
         ArgumentNullException.ThrowIfNull(responseModel);
-        var node = SerializerOptions.GetJsonSchemaAsNode(responseModel, ExporterOptions);
-        if (node is not JsonObject schema)
-        {
-            throw new ArgumentException($"{responseModel} does not have an object schema.", nameof(responseModel));
-        }
-
-        return InlineRefs(schema);
+        // The Pydantic-shaped generator from the prompts port, so providers see the same schema upstream sends.
+        var schema = InlineRefs(GraphitiNet.Prompts.ResponseSchema.Generate(responseModel, SerializerOptions));
+        schema.Remove("$defs");
+        return schema;
     }
 
     /// <summary>The schema as upstream writes it into prompts: <c>json.dumps(model_json_schema())</c>.</summary>
-    public static string Serialize(Type responseModel) => PythonJson.Dumps(GetSchema(responseModel));
+    public static string Serialize(Type responseModel) =>
+        GraphitiNet.Prompts.ResponseSchema.ToPromptJson(responseModel, SerializerOptions);
 
     /// <summary>
     /// Makes a schema meet OpenAI's strict structured-output subset, as the OpenAI Python SDK's

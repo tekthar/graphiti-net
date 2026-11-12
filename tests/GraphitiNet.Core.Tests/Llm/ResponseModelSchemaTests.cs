@@ -40,8 +40,10 @@ public class ResponseModelSchemaTests
 
         Assert.DoesNotContain("$ref", schema.ToJsonString(), StringComparison.Ordinal);
         Assert.Equal("Extracted entities.", (string?)schema["description"]);
-        var primary = schema["properties"]!["primary"]!;
+        // Pydantic writes an optional nested model as anyOf [model, null].
+        var primary = schema["properties"]!["primary"]!["anyOf"]![0]!;
         Assert.NotNull(primary["properties"]?["entity_type_id"]);
+        Assert.Null(schema["$defs"]);
     }
 
     [Fact]
