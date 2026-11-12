@@ -1,0 +1,4 @@
+# Prompt text is built from raw string literals, which take the line endings of the source file.
+# Keep them LF on every platform so prompts match upstream byte for byte.
+src/GraphitiNet.Core/Prompts/*.cs text eol=lf
+tests/GraphitiNet.Core.Tests/Prompts/Fixtures/* text eol=lf

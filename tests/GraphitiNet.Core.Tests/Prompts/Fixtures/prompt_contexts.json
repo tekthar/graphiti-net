@@ -1,0 +1,423 @@
+{
+ "_notice": "Contexts for the golden prompt renders. upstream_test is PROMPT_CONTEXT from Graphiti tests/prompts/test_legacy_prompt_compatibility.py. {\"$datetime\": ...} is a datetime.",
+ "contexts": {
+  "upstream_test": {
+   "answer": "Alice knows Bob.",
+   "attributes": {
+    "role": "project lead"
+   },
+   "baseline": "Bob is known by Alice.",
+   "candidate": "Alice knows Bob.",
+   "custom_extraction_instructions": "Use only facts stated in the episode.",
+   "edge_invalidation_candidates": "[]",
+   "edge_types": [
+    {
+     "name": "KNOWS",
+     "description": "One person knows another."
+    }
+   ],
+   "entities": [
+    {
+     "name": "Alice",
+     "type": "Person"
+    }
+   ],
+   "entity_summaries": [
+    {
+     "name": "Alice",
+     "summary": "Project lead."
+    }
+   ],
+   "entity_type_description": {
+    "Person": "A person mentioned in an episode."
+   },
+   "entity_type_descriptions": {
+    "Person": "A person mentioned in an episode."
+   },
+   "entity_types": "Person: A person mentioned in an episode.",
+   "episode_content": "Alice met Bob at the office on January 2.",
+   "episodes": [
+    "Alice met Bob on January 2."
+   ],
+   "existing_attributes": {
+    "since": "2024"
+   },
+   "existing_edges": "[{\"fact\": \"Alice knows Bob.\"}]",
+   "existing_nodes": [
+    {
+     "name": "Alice",
+     "summary": "Project lead."
+    }
+   ],
+   "existing_summary": "Alice is preparing a project launch.",
+   "extracted_entities": "[{\"name\": \"Alice\", \"type\": \"Person\"}]",
+   "extracted_node": {
+    "name": "Alice",
+    "type": "Person"
+   },
+   "extracted_nodes": [
+    {
+     "name": "Alice",
+     "type": "Person"
+    },
+    {
+     "name": "Bob",
+     "type": "Person"
+    }
+   ],
+   "fact": "Alice knows Bob.",
+   "facts": [
+    {
+     "fact": "Alice knows Bob."
+    }
+   ],
+   "message": "Alice knows Bob.",
+   "new_edge": "{\"fact\": \"Alice knows Bob.\"}",
+   "node": "Alice",
+   "node_name": "Alice",
+   "node_summaries": [
+    {
+     "name": "Alice",
+     "summary": "Project lead."
+    }
+   ],
+   "node_summary": "Alice leads the project.",
+   "nodes": [
+    {
+     "name": "Alice",
+     "summary": "Project lead."
+    }
+   ],
+   "previous_episodes": [
+    {
+     "content": "Alice met Bob.",
+     "reference_time": "2025-01-02T00:00:00Z"
+    }
+   ],
+   "previous_messages": "User: Who knows Bob?",
+   "query": "Who knows Bob?",
+   "reference_time": "2025-01-03T00:00:00Z",
+   "response": "Alice knows Bob.",
+   "saga_name": "Alice's project launch",
+   "source_description": "A chat message",
+   "summary": "Alice leads the project."
+  },
+  "rich": {
+   "episode_content": "Alice: 안녕하세요! I moved to \"Zürich\" — it's great 🎉\nBob: Nice\ttab \\ backslash",
+   "previous_episodes": [
+    {
+     "content": "Bob: Where's Alice?",
+     "timestamp": "2025-01-02T10:00:00+00:00"
+    },
+    {
+     "content": "Carol: 東京 «quoted»",
+     "timestamp": null
+    }
+   ],
+   "custom_extraction_instructions": "Prefer full names.\n7. **Episode Attribution**: use `episode_indices`.",
+   "entity_types": [
+    {
+     "entity_type_id": 0,
+     "entity_type_name": "Entity",
+     "entity_type_description": "A specific entity. BAD: \"luck\", 'ideas'"
+    },
+    {
+     "entity_type_id": 1,
+     "entity_type_name": "Person",
+     "entity_type_description": null
+    }
+   ],
+   "source_description": "Slack message",
+   "extracted_entities": [
+    {
+     "name": "Alice",
+     "id": 0
+    },
+    {
+     "name": "O'Brien",
+     "id": 1
+    }
+   ],
+   "node": {
+    "name": "Alice",
+    "summary": "Alice's café",
+    "entity_types": [
+     "Entity",
+     "Person"
+    ],
+    "attributes": {
+     "age": 30,
+     "score": 0.1,
+     "tiny": 1e-07,
+     "small": 0.0001,
+     "big": 1e+16,
+     "almost_big": 1234567890123456.0,
+     "ratio": 2.5,
+     "whole": 3.0,
+     "neg_zero": -0.0,
+     "third": 0.3333333333333333,
+     "huge_int": 9223372036854775808,
+     "neg": -42,
+     "active": true,
+     "inactive": false,
+     "manager": null,
+     "tags": [
+      "a",
+      "b'c",
+      "d\"e",
+      "f'g\"h",
+      ""
+     ],
+     "nbsp": "a b",
+     "ctrl": "x\u0001yzw",
+     "zwsp": "a​b",
+     "line_sep": "a b",
+     "backslash": "C:\\path\\n",
+     "emoji": "😀 👍🏽",
+     "whitespace": "tab\there\nnew\rret\u000bvt\fff\bbs",
+     "cjk": "東京 서울",
+     "nested": {
+      "k": [
+       1,
+       [
+        2,
+        {}
+       ],
+       []
+      ],
+      "empty": {}
+     },
+     "created_at": {
+      "$datetime": "2025-01-03T09:30:00+00:00"
+     }
+    }
+   },
+   "extracted_node": {
+    "id": 0,
+    "name": "Alice",
+    "entity_type": [
+     "Entity",
+     "Person"
+    ]
+   },
+   "entity_type_description": "A human being.",
+   "existing_nodes": [
+    {
+     "candidate_id": 0,
+     "name": "Alice Smith",
+     "entity_types": [
+      "Entity",
+      "Person"
+     ],
+     "summary": "",
+     "rank": 1.5
+    }
+   ],
+   "extracted_nodes": [
+    {
+     "id": 0,
+     "name": "Alice",
+     "entity_type": [
+      "Entity",
+      "Person"
+     ]
+    },
+    {
+     "id": 1,
+     "name": "Zürich",
+     "entity_type": [
+      "Entity"
+     ]
+    },
+    {
+     "id": 2,
+     "name": "🎉",
+     "entity_type": [
+      "Entity"
+     ]
+    }
+   ],
+   "nodes": [
+    {
+     "name": "Alice",
+     "entity_types": [
+      "Entity",
+      "Person"
+     ]
+    },
+    {
+     "name": "Zürich",
+     "entity_types": [
+      "Entity"
+     ]
+    }
+   ],
+   "reference_time": {
+    "$datetime": "2025-01-03T09:30:15.123456+00:00"
+   },
+   "edge_types": [
+    {
+     "fact_type_name": "WORKS_AT",
+     "fact_type_signatures": [
+      [
+       "Person",
+       "Organization"
+      ]
+     ],
+     "fact_type_description": "Employment"
+    }
+   ],
+   "strict_edge_types": true,
+   "fact": "Alice works at Acme",
+   "existing_attributes": {
+    "since": null,
+    "title": "Engineer",
+    "level": 3,
+    "weight": 0.75
+   },
+   "facts": [
+    {
+     "fact": "Alice works at Acme",
+     "reference_time": "2025-01-03T09:30:15+00:00"
+    },
+    {
+     "fact": "Bob left",
+     "reference_time": null
+    }
+   ],
+   "existing_edges": [
+    {
+     "idx": 0,
+     "fact": "Alice's role"
+    },
+    {
+     "idx": 1,
+     "fact": "Say \"hi\""
+    }
+   ],
+   "edge_invalidation_candidates": [
+    {
+     "idx": 2,
+     "fact": "Alice works at Initech"
+    }
+   ],
+   "new_edge": "Alice works at Acme Corp",
+   "node_summaries": [
+    {
+     "name": "Alice",
+     "summary": "Leads."
+    },
+    {
+     "name": "Alice",
+     "summary": "Café owner."
+    }
+   ],
+   "node_name": "Alice",
+   "node_summary": "Alice leads.",
+   "attributes": {
+    "role": null,
+    "age": 30
+   },
+   "summary": "Alice leads the \"launch\".",
+   "entities": [
+    {
+     "name": "Alice",
+     "summary": "",
+     "entity_types": [
+      "Person"
+     ],
+     "attributes": {}
+    }
+   ],
+   "entity_type_descriptions": {
+    "Person": "A human"
+   },
+   "saga_name": "Launch 🚀",
+   "existing_summary": "Alice leads.",
+   "episodes": [
+    "Alice: hi",
+    "Bob: yo"
+   ],
+   "query": "Who is \"Alice\"?",
+   "entity_summaries": [
+    {
+     "name": "Alice",
+     "summary": "Leads."
+    }
+   ],
+   "answer": "Alice",
+   "response": "It is Alice.",
+   "previous_messages": [
+    {
+     "role": "user",
+     "content": "it's"
+    },
+    "plain"
+   ],
+   "message": "Alice: hi",
+   "baseline": {
+    "nodes": [
+     "Alice"
+    ],
+    "at": {
+     "$datetime": "2025-01-03T09:30:15.000001+02:00"
+    },
+    "neg_off": {
+     "$datetime": "2025-01-03T09:30:00-05:30"
+    },
+    "noon": {
+     "$datetime": "2025-01-03T12:00:00+00:00"
+    },
+    "secs": {
+     "$datetime": "2025-01-03T12:00:07+00:00"
+    }
+   },
+   "candidate": {
+    "nodes": [
+     "Alice",
+     "Bob"
+    ],
+    "ok": true
+   }
+  },
+  "minimal": {
+   "episode_content": "",
+   "previous_episodes": [],
+   "custom_extraction_instructions": "",
+   "entity_types": [],
+   "source_description": "",
+   "extracted_entities": [],
+   "node": {},
+   "extracted_node": {},
+   "entity_type_description": null,
+   "existing_nodes": [],
+   "extracted_nodes": [],
+   "nodes": [],
+   "reference_time": null,
+   "fact": "",
+   "existing_attributes": {},
+   "facts": [],
+   "existing_edges": [],
+   "edge_invalidation_candidates": [],
+   "new_edge": "",
+   "node_summaries": [],
+   "node_name": "",
+   "node_summary": "",
+   "attributes": {},
+   "summary": "",
+   "entities": [],
+   "query": "",
+   "entity_summaries": [],
+   "answer": "",
+   "response": "",
+   "previous_messages": "",
+   "message": "",
+   "baseline": "",
+   "candidate": "",
+   "entity_type_descriptions": {},
+   "edge_types": [],
+   "strict_edge_types": false,
+   "episodes": []
+  }
+ }
+}
