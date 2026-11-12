@@ -38,6 +38,11 @@ public static class SearchEngine
     /// <param name="queryVector">A precomputed query embedding; skips the embedder.</param>
     /// <param name="maxCoroutines">The concurrency limit; <see langword="null"/> uses
     /// <see cref="Concurrency.SemaphoreLimit"/>.</param>
+    /// <param name="episodeAccessFilter">Hides results the caller may not read, before reranking and the limit (see
+    /// <see cref="IEpisodeAccessFilter"/> for the rules). When set, each method fetches
+    /// <see cref="EpisodeAccess.CandidateMultiplier"/> times more candidates, communities are not returned, and
+    /// <see cref="SearchResults.NodeEpisodeUuids"/> is filled. <see langword="null"/> behaves exactly as
+    /// upstream.</param>
     /// <param name="cancellationToken">Cancels the search.</param>
     /// <returns>The results per scope, best first.</returns>
     /// <exception cref="GroupIdValidationException">A group id contains invalid characters.</exception>
@@ -55,6 +60,7 @@ public static class SearchEngine
         IReadOnlyList<string>? bfsOriginNodeUuids = null,
         IReadOnlyList<float>? queryVector = null,
         int? maxCoroutines = null,
+        IEpisodeAccessFilter? episodeAccessFilter = null,
         CancellationToken cancellationToken = default)
     {
         Validation.ValidateGroupIds(groupIds);
@@ -105,7 +111,8 @@ public static class SearchEngine
             async phase =>
             {
                 (IReadOnlyList<EntityEdge>, IReadOnlyList<double>) edges = ([], []);
-                (IReadOnlyList<EntityNode>, IReadOnlyList<double>) nodes = ([], []);
+                (IReadOnlyList<EntityNode>, IReadOnlyList<double>, IReadOnlyDictionary<string, IReadOnlyList<string>>?)
+                    nodes = ([], [], null);
                 (IReadOnlyList<EpisodicNode>, IReadOnlyList<double>) episodes = ([], []);
                 (IReadOnlyList<CommunityNode>, IReadOnlyList<double>) communities = ([], []);
 
@@ -124,8 +131,9 @@ public static class SearchEngine
                             config.Limit,
                             config.RerankerMinScore,
                             maxCoroutines,
+                            episodeAccessFilter,
                             cancellationToken).ConfigureAwait(false),
-                        async () => nodes = await NodeSearchAsync(
+                        async () => nodes = await NodeSearchCoreAsync(
                             driver,
                             crossEncoder,
                             query,
@@ -138,6 +146,7 @@ public static class SearchEngine
                             config.Limit,
                             config.RerankerMinScore,
                             maxCoroutines,
+                            episodeAccessFilter,
                             cancellationToken).ConfigureAwait(false),
                         async () => episodes = await EpisodeSearchAsync(
                             driver,
@@ -150,6 +159,7 @@ public static class SearchEngine
                             config.Limit,
                             config.RerankerMinScore,
                             maxCoroutines,
+                            episodeAccessFilter,
                             cancellationToken).ConfigureAwait(false),
                         async () => communities = await CommunitySearchAsync(
                             driver,
@@ -161,6 +171,7 @@ public static class SearchEngine
                             config.Limit,
                             config.RerankerMinScore,
                             maxCoroutines,
+                            episodeAccessFilter,
                             cancellationToken).ConfigureAwait(false),
                     ],
                     maxCoroutines,
@@ -178,6 +189,7 @@ public static class SearchEngine
                     EdgeRerankerScores = edges.Item2,
                     Nodes = nodes.Item1,
                     NodeRerankerScores = nodes.Item2,
+                    NodeEpisodeUuids = nodes.Item3,
                     Episodes = episodes.Item1,
                     EpisodeRerankerScores = episodes.Item2,
                     Communities = communities.Item1,
@@ -207,6 +219,7 @@ public static class SearchEngine
         int limit = SearchDefaults.DefaultSearchLimit,
         double rerankerMinScore = 0,
         int? maxCoroutines = null,
+        IEpisodeAccessFilter? episodeAccessFilter = null,
         CancellationToken cancellationToken = default)
     {
         if (config is null)
@@ -227,7 +240,7 @@ public static class SearchEngine
             ],
             async span =>
             {
-                var candidateLimit = 2 * limit;
+                var candidateLimit = CandidateLimit(limit, episodeAccessFilter);
                 var searchTasks = new List<Func<Task<IReadOnlyList<EntityEdge>>>>();
                 if (config.SearchMethods.Contains(EdgeSearchMethod.Bm25))
                 {
@@ -278,6 +291,17 @@ public static class SearchEngine
                             groupIds,
                             candidateLimit,
                             cancellationToken)).ConfigureAwait(false));
+                }
+
+                if (episodeAccessFilter is not null)
+                {
+                    var visible = await TraceAsync(
+                        "search.edge_search.access_filter",
+                        [("candidate_count", searchResults.Sum(r => r.Count))],
+                        _ => EpisodeAccess.VisibleEdgeUuidsAsync(
+                            episodeAccessFilter, searchResults.SelectMany(r => r), cancellationToken))
+                        .ConfigureAwait(false);
+                    searchResults = KeepVisible(searchResults, edge => visible.Contains(edge.Uuid));
                 }
 
                 var edgeUuidMap = SearchUtils.UuidMap(searchResults, edge => edge.Uuid);
@@ -342,11 +366,49 @@ public static class SearchEngine
         int limit = SearchDefaults.DefaultSearchLimit,
         double rerankerMinScore = 0,
         int? maxCoroutines = null,
+        IEpisodeAccessFilter? episodeAccessFilter = null,
         CancellationToken cancellationToken = default)
+    {
+        var (nodes, scores, _) = await NodeSearchCoreAsync(
+            driver,
+            crossEncoder,
+            query,
+            queryVector,
+            groupIds,
+            config,
+            searchFilter,
+            centerNodeUuid,
+            bfsOriginNodeUuids,
+            limit,
+            rerankerMinScore,
+            maxCoroutines,
+            episodeAccessFilter,
+            cancellationToken).ConfigureAwait(false);
+        return (nodes, scores);
+    }
+
+    /// <summary>Node search that also returns, when a filter is set, the readable episodes behind each returned
+    /// entity.</summary>
+    private static async Task<(IReadOnlyList<EntityNode> Nodes, IReadOnlyList<double> Scores,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? EpisodeUuids)> NodeSearchCoreAsync(
+        IGraphDriver driver,
+        CrossEncoderClient? crossEncoder,
+        string query,
+        IReadOnlyList<float> queryVector,
+        IReadOnlyList<string>? groupIds,
+        NodeSearchConfig? config,
+        SearchFilters searchFilter,
+        string? centerNodeUuid,
+        IReadOnlyList<string>? bfsOriginNodeUuids,
+        int limit,
+        double rerankerMinScore,
+        int? maxCoroutines,
+        IEpisodeAccessFilter? episodeAccessFilter,
+        CancellationToken cancellationToken)
     {
         if (config is null)
         {
-            return ([], []);
+            return ([], [], episodeAccessFilter is null ? null : new Dictionary<string, IReadOnlyList<string>>());
         }
 
         ArgumentNullException.ThrowIfNull(driver);
@@ -362,7 +424,7 @@ public static class SearchEngine
             ],
             async span =>
             {
-                var candidateLimit = 2 * limit;
+                var candidateLimit = CandidateLimit(limit, episodeAccessFilter);
                 var searchTasks = new List<Func<Task<IReadOnlyList<EntityNode>>>>();
                 if (config.SearchMethods.Contains(NodeSearchMethod.Bm25))
                 {
@@ -408,6 +470,22 @@ public static class SearchEngine
                             cancellationToken)).ConfigureAwait(false));
                 }
 
+                Dictionary<string, IReadOnlyList<string>>? visibleNodes = null;
+                if (episodeAccessFilter is not null)
+                {
+                    visibleNodes = await TraceAsync(
+                        "search.node_search.access_filter",
+                        [("candidate_count", searchResults.Sum(r => r.Count))],
+                        _ => EpisodeAccess.VisibleNodesAsync(
+                            driver,
+                            episodeAccessFilter,
+                            searchResults.SelectMany(r => r),
+                            maxCoroutines,
+                            cancellationToken)).ConfigureAwait(false);
+                    var visible = visibleNodes;
+                    searchResults = KeepVisible(searchResults, node => visible.ContainsKey(node.Uuid));
+                }
+
                 var resultUuids = UuidLists(searchResults, node => node.Uuid);
                 var nodeUuidMap = SearchUtils.UuidMap(searchResults, node => node.Uuid);
 
@@ -428,6 +506,7 @@ public static class SearchEngine
                         rerankerMinScore,
                         resultUuids,
                         nodeUuidMap,
+                        visibleNodes?.ToDictionary(pair => pair.Key, pair => pair.Value.Count, StringComparer.Ordinal),
                         cancellationToken)).ConfigureAwait(false);
 
                 IReadOnlyList<EntityNode> rerankedNodes = [.. rerankedUuids.Select(uuid => nodeUuidMap[uuid])];
@@ -437,8 +516,13 @@ public static class SearchEngine
                     ("reranked_count", rerankedNodes.Count),
                     ("returned_count", Math.Min(rerankedNodes.Count, limit)));
 
-                return ((IReadOnlyList<EntityNode>)[.. rerankedNodes.Take(limit)],
-                    (IReadOnlyList<double>)[.. nodeScores.Take(limit)]);
+                IReadOnlyList<EntityNode> returned = [.. rerankedNodes.Take(limit)];
+                IReadOnlyDictionary<string, IReadOnlyList<string>>? episodeUuids = visibleNodes is null
+                    ? null
+                    : returned.DistinctBy(node => node.Uuid)
+                        .ToDictionary(node => node.Uuid, node => visibleNodes[node.Uuid], StringComparer.Ordinal);
+
+                return (returned, (IReadOnlyList<double>)[.. nodeScores.Take(limit)], episodeUuids);
             }).ConfigureAwait(false);
     }
 
@@ -461,6 +545,7 @@ public static class SearchEngine
         int limit = SearchDefaults.DefaultSearchLimit,
         double rerankerMinScore = 0,
         int? maxCoroutines = null,
+        IEpisodeAccessFilter? episodeAccessFilter = null,
         CancellationToken cancellationToken = default)
     {
         if (config is null)
@@ -479,7 +564,7 @@ public static class SearchEngine
             ],
             async span =>
             {
-                var candidateLimit = 2 * limit;
+                var candidateLimit = CandidateLimit(limit, episodeAccessFilter);
                 var searchResults = await TraceAsync(
                     "search.episode_search.execute_methods",
                     [("candidate_limit", candidateLimit)],
@@ -490,6 +575,18 @@ public static class SearchEngine
                             ],
                             maxCoroutines,
                             cancellationToken).ConfigureAwait(false)).ToList()).ConfigureAwait(false);
+
+                if (episodeAccessFilter is not null)
+                {
+                    var readable = await TraceAsync(
+                        "search.episode_search.access_filter",
+                        [("candidate_count", searchResults.Sum(r => r.Count))],
+                        _ => EpisodeAccess.FilterEpisodesAsync(
+                            episodeAccessFilter, [.. searchResults.SelectMany(r => r)], cancellationToken))
+                        .ConfigureAwait(false);
+                    var readableUuids = readable.Select(e => e.Uuid).ToHashSet(StringComparer.Ordinal);
+                    searchResults = KeepVisible(searchResults, episode => readableUuids.Contains(episode.Uuid));
+                }
 
                 var resultUuids = UuidLists(searchResults, episode => episode.Uuid);
                 var episodeUuidMap = SearchUtils.UuidMap(searchResults, episode => episode.Uuid);
@@ -541,8 +638,9 @@ public static class SearchEngine
     /// search always both run (whatever <see cref="CommunitySearchConfig.SearchMethods"/> holds), each for up to
     /// <c>2 * limit</c> candidates.
     /// </summary>
-    /// <returns>The communities and their reranker scores; empty when <paramref name="config"/> is
-    /// <see langword="null"/>.</returns>
+    /// <returns>The communities and their reranker scores; empty when <paramref name="config"/> is <see langword="null"/>
+    /// or an <paramref name="episodeAccessFilter"/> is set (communities aggregate entities the caller may not see).
+    /// </returns>
     /// <exception cref="SearchRerankerException">Cross-encoder reranking without a cross-encoder.</exception>
     public static async Task<(IReadOnlyList<CommunityNode> Communities, IReadOnlyList<double> Scores)>
         CommunitySearchAsync(
@@ -555,9 +653,10 @@ public static class SearchEngine
             int limit = SearchDefaults.DefaultSearchLimit,
             double rerankerMinScore = 0,
             int? maxCoroutines = null,
+            IEpisodeAccessFilter? episodeAccessFilter = null,
             CancellationToken cancellationToken = default)
     {
-        if (config is null)
+        if (config is null || episodeAccessFilter is not null)
         {
             return ([], []);
         }
@@ -748,6 +847,7 @@ public static class SearchEngine
         double rerankerMinScore,
         List<IReadOnlyList<string>> resultUuids,
         Dictionary<string, EntityNode> nodeUuidMap,
+        IReadOnlyDictionary<string, int>? mentionCounts,
         CancellationToken cancellationToken)
     {
         switch (config.Reranker)
@@ -783,7 +883,7 @@ public static class SearchEngine
                     "search.node_search.episode_mentions_rank",
                     [("candidate_count", nodeUuidMap.Count)],
                     _ => SearchUtils.EpisodeMentionsRerankerAsync(
-                        driver, resultUuids, rerankerMinScore, cancellationToken)).ConfigureAwait(false);
+                        driver, resultUuids, rerankerMinScore, mentionCounts, cancellationToken)).ConfigureAwait(false);
 
             case NodeReranker.NodeDistance:
                 {
@@ -873,6 +973,13 @@ public static class SearchEngine
                 return results;
             }).ConfigureAwait(false);
     }
+
+    private static int CandidateLimit(int limit, IEpisodeAccessFilter? episodeAccessFilter) =>
+        episodeAccessFilter is null ? 2 * limit : 2 * limit * EpisodeAccess.CandidateMultiplier;
+
+    // Drops hidden candidates from each ranking; the rankings close up, so rerankers see only the visible set.
+    private static List<IReadOnlyList<T>> KeepVisible<T>(List<IReadOnlyList<T>> results, Func<T, bool> isVisible) =>
+        [.. results.Select(result => (IReadOnlyList<T>)[.. result.Where(isVisible)])];
 
     private static List<IReadOnlyList<string>> UuidLists<T>(List<IReadOnlyList<T>> results, Func<T, string> uuid) =>
         [.. results.Select(result => (IReadOnlyList<string>)[.. result.Select(uuid)])];

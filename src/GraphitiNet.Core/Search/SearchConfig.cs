@@ -235,6 +235,14 @@ public sealed record SearchResults
     /// <summary>Reranker scores for <see cref="Nodes"/>.</summary>
     public IReadOnlyList<double> NodeRerankerScores { get; init; } = [];
 
+    /// <summary>
+    /// For each entity in <see cref="Nodes"/>, the ids of the readable episodes that mention it. Filled only when the
+    /// search ran with an <see cref="IEpisodeAccessFilter"/> (graphiti-net extension); otherwise
+    /// <see langword="null"/>, and <see cref="SearchUtils.GetMentioningEpisodeUuidsAsync"/> fetches them. Facts carry
+    /// theirs in <see cref="EntityEdge.Episodes"/>.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? NodeEpisodeUuids { get; init; }
+
     /// <summary>Episodes found.</summary>
     public IReadOnlyList<EpisodicNode> Episodes { get; init; } = [];
 
@@ -262,9 +270,19 @@ public sealed record SearchResults
         var episodeScores = new List<double>();
         var communities = new List<CommunityNode>();
         var communityScores = new List<double>();
+        Dictionary<string, IReadOnlyList<string>>? nodeEpisodeUuids = null;
 
         foreach (var result in resultsList)
         {
+            if (result.NodeEpisodeUuids is not null)
+            {
+                nodeEpisodeUuids ??= new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+                foreach (var (uuid, episodeUuids) in result.NodeEpisodeUuids)
+                {
+                    nodeEpisodeUuids[uuid] = episodeUuids;
+                }
+            }
+
             edges.AddRange(result.Edges);
             edgeScores.AddRange(result.EdgeRerankerScores);
             nodes.AddRange(result.Nodes);
@@ -281,6 +299,7 @@ public sealed record SearchResults
             EdgeRerankerScores = edgeScores,
             Nodes = nodes,
             NodeRerankerScores = nodeScores,
+            NodeEpisodeUuids = nodeEpisodeUuids,
             Episodes = episodes,
             EpisodeRerankerScores = episodeScores,
             Communities = communities,
