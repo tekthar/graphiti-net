@@ -547,6 +547,14 @@ public sealed partial class Graphiti
         ArgumentNullException.ThrowIfNull(sourceNode);
         ArgumentNullException.ThrowIfNull(edge);
         ArgumentNullException.ThrowIfNull(targetNode);
+        Validation.ValidateGroupId(edge.GroupId);
+
+        // graphiti-net keeps every write inside one group: upstream would link entities across groups here.
+        if (sourceNode.GroupId != edge.GroupId || targetNode.GroupId != edge.GroupId)
+        {
+            throw new ArgumentException(
+                $"The source and target entities must be in the fact's group '{edge.GroupId}'.", nameof(edge));
+        }
 
         await using var groupLock = await GroupLock.AcquireAsync(edge.GroupId, cancellationToken)
             .ConfigureAwait(false);
@@ -1249,7 +1257,14 @@ public sealed partial class Graphiti
     {
         try
         {
-            return await Driver.EntityNodeOps.GetByUuidAsync(node.Uuid, cancellationToken).ConfigureAwait(false);
+            var stored = await Driver.EntityNodeOps.GetByUuidAsync(node.Uuid, cancellationToken).ConfigureAwait(false);
+            if (stored.GroupId != node.GroupId)
+            {
+                throw new ArgumentException(
+                    $"Entity {node.Uuid} is stored in another group than '{node.GroupId}'.", nameof(node));
+            }
+
+            return stored;
         }
         catch (NodeNotFoundException)
         {

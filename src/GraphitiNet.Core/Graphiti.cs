@@ -253,7 +253,11 @@ public sealed partial class Graphiti : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         Validation.ValidateGroupIds(groupIds);
-        await using var groupLocks = await AcquireGroupLocksAsync(groupIds ?? [], cancellationToken)
+
+        // Clearing the whole graph waits for every group that holds data, so it can't race a running write.
+        var lockedGroups = groupIds
+                           ?? await Driver.GraphOps.GetEntityGroupIdsAsync(cancellationToken).ConfigureAwait(false);
+        await using var groupLocks = await AcquireGroupLocksAsync(lockedGroups, cancellationToken)
             .ConfigureAwait(false);
         await Driver.GraphOps.ClearDataAsync(groupIds, cancellationToken).ConfigureAwait(false);
     }

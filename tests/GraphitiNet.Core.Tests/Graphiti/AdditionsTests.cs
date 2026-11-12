@@ -373,6 +373,44 @@ public class AdditionsTests
     }
 
     [Fact]
+    public async Task Clearing_every_group_waits_for_running_writes()
+    {
+        var groupLock = new InProcessGroupLock();
+        await using var graphiti = Create(out var driver, groupLock: groupLock);
+        var group = NewGroup();
+        var (a, e, b) = Triplet(group);
+        await driver.EntityNodeOps.SaveBulkAsync([a, b]);
+
+        var held = await groupLock.AcquireAsync(group);
+        var clearing = graphiti.ClearDataAsync();
+        await Task.Delay(50);
+        Assert.False(clearing.IsCompleted);
+
+        await held.DisposeAsync();
+        await clearing.WaitAsync(Timeout);
+        Assert.Empty(await driver.EntityNodeOps.GetByGroupIdsAsync([group]));
+    }
+
+    [Fact]
+    public async Task Add_triplet_rejects_entities_from_another_group()
+    {
+        await using var graphiti = Create(out var driver);
+        var group = NewGroup();
+        var other = NewGroup();
+        var (a, e, _) = Triplet(group);
+        var (_, _, foreign) = Triplet(other);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => graphiti.AddTripletAsync(a, e, foreign));
+
+        // An entity stored in another group under the given id is rejected too.
+        var (a2, e2, b2) = Triplet(group);
+        var stored = new EntityNode { Uuid = b2.Uuid, Name = b2.Name, GroupId = other, CreatedAt = Now };
+        await driver.EntityNodeOps.SaveAsync(stored);
+        await Assert.ThrowsAsync<ArgumentException>(() => graphiti.AddTripletAsync(a2, e2, b2));
+        Assert.Empty(await driver.EntityEdgeOps.GetByGroupIdsAsync([group]));
+    }
+
+    [Fact]
     public async Task Build_communities_waits_for_the_groups_lock()
     {
         var groupLock = new InProcessGroupLock();

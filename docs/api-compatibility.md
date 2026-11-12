@@ -296,6 +296,11 @@ foreach (var node in nodeResults.Nodes)
   stored; graphiti-net leaves it out. graphiti-net also processes a stored episode in its own group: `groupId` may be
   omitted, and naming another group (in `AddEpisodeAsync` or a `RawEpisode.Uuid` in `AddEpisodeBulkAsync`) throws
   `ArgumentException`, where upstream would read the other group's episodes as context and write facts to it.
+- **`add_triplet` across groups.** Upstream links whatever nodes it is given, even from other groups. graphiti-net
+  keeps every write inside one group: `AddTripletAsync` throws `ArgumentException` when the source or target entity
+  is (or is stored) in another group than the fact.
+- **`clear_data()` with no groups** waits for the group lock of every group that holds entities, so it can't race a
+  running write.
 - **`add_triplet` id clash.** Ids are immutable, so the new fact is a copy with a new id (see [Records](#records)).
 - **Label propagation.** Upstream loops forever when two entities joined by two or more facts swap communities each
   round; graphiti-net stops when an assignment repeats.
@@ -310,6 +315,10 @@ foreach (var node in nodeResults.Nodes)
 - **Ties upstream breaks in set order.** Where upstream picks among equals by iterating a Python set (equally similar
   fuzzy candidates in entity deduplication, dropped attributes restored in `replace` mode, uncovered pairs in
   covering chunks), the order changes from run to run or follows CPython's hashing; graphiti-net uses a fixed order.
+
+> **Group scoping in search.** As upstream, a search with `groupIds` of `null`, `[]` or `[""]` searches **every**
+> group, and `""` is the default group id. If your service maps users or tenants to groups, always pass their
+> non-empty group ids explicitly, and never let a tenant resolve to `""`.
 
 ## graphiti-net additions
 
