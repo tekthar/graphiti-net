@@ -13,6 +13,7 @@ Packages: `GraphitiNet` and `GraphitiNet.PostgreSql`, for .NET 10.
 ### Added
 
 - **`Graphiti`**, the entry point, with upstream's methods and parameter names: `AddEpisodeAsync`,
+  `AddEpisodeBulkAsync` (combined entity and fact extraction by default),
   `AddTripletAsync`, `RemoveEpisodeAsync`, `RetrieveEpisodesAsync`, `SearchAsync`, `SearchAdvancedAsync`,
   `GetNodesAndEdgesByEpisodeAsync`, `BuildCommunitiesAsync`, `SummarizeSagaAsync`, `ClearDataAsync`,
   `BuildIndicesAndConstraintsAsync`, and the `Nodes` and `Edges` namespaces.
@@ -38,12 +39,10 @@ Packages: `GraphitiNet` and `GraphitiNet.PostgreSql`, for .NET 10.
 
 ### Known gaps
 
-- `AddEpisodeBulkAsync` is not wired yet: its bulk extraction and deduplication steps throw
-  `NotImplementedException`.
 - On PostgreSQL, the `customer-support` parity replay has one fact-resolution step that gets a different candidate
   set than upstream; the test is skipped and tracked.
-- Benchmarks so far: one small LongMemEval graph-building run (36 messages). Full LongMemEval, DMR and LoCoMo runs
-  come before 1.0.
+- Benchmarks so far: LongMemEval graph building against Python Graphiti (36 and 100 messages, within upstream's
+  run-to-run variation). LongMemEval QA, DMR and LoCoMo runs come before 1.0.
 - The default LLM model is upstream's, which may not be available on every OpenAI account; set a model in
   `LLMConfig`.
 

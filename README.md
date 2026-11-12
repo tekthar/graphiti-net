@@ -28,9 +28,11 @@ it came from.
 | Communities, sagas (`SummarizeSagaAsync`), custom entity and edge types | Works |
 | Storage: PostgreSQL + pgvector, in memory | Works |
 | Providers: OpenAI, Azure OpenAI, OpenAI-compatible, any Microsoft.Extensions.AI client | Works |
-| `AddEpisodeBulkAsync` | Pending: the bulk extraction and dedup steps are not wired yet |
+| `AddEpisodeBulkAsync`, with combined extraction by default | Works; replayed against a recorded upstream `add_episode_bulk` run on every commit |
 | PostgreSQL parity on the `customer-support` dataset | Known gap: one fact-resolution step gets a different candidate set |
-| LongMemEval, DMR and LoCoMo benchmarks | First small graph-building run done; full runs before 1.0 |
+| Graph building against Python Graphiti on LongMemEval | 100 messages: within upstream's own run-to-run variation ([results](parity/results/2026-11-12-lme-graph-building.md)) |
+| LongMemEval QA, DMR and LoCoMo benchmarks | Before 1.0 |
+| Consumer requirements (AbpAgent, issues #1 and #2) | Every criterion tested on both drivers ([acceptance](docs/acceptance.md)) |
 
 ## Install
 
