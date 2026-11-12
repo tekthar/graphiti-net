@@ -1,0 +1,164 @@
+// Copyright 2026, graphiti-net contributors
+// Licensed under the Apache License, Version 2.0. See LICENSE.
+
+using NpgsqlTypes;
+using Pgvector;
+
+namespace GraphitiNet.Driver.PostgreSql.Entities;
+
+// EF Core entity classes for graphiti-net's tables. They mirror the core records in GraphitiNet.Models; the driver maps
+// between the two. Hosts that add the tables to their own DbContext (AddGraphiti) see these types in their model.
+// Lists map to PostgreSQL text[] columns, JSON objects to jsonb (kept as raw JSON text here). The searchable tables
+// also have a text_search_config (regconfig) column, mapped as a shadow property: the driver sets it from the group.
+
+/// <summary>Columns every graph record has.</summary>
+public abstract class GraphRecord
+{
+    /// <summary>The record's id (primary key).</summary>
+    public string Uuid { get; set; } = "";
+
+    /// <summary>The graph partition.</summary>
+    public string GroupId { get; set; } = "";
+
+    /// <summary>When graphiti-net recorded it (UTC).</summary>
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>Columns every node has.</summary>
+public abstract class NodeRecord : GraphRecord
+{
+    /// <summary>The node's name.</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>Type labels.</summary>
+    public List<string> Labels { get; set; } = [];
+}
+
+/// <summary>Columns every edge has.</summary>
+public abstract class EdgeRecord : GraphRecord
+{
+    /// <summary>The node the edge starts from.</summary>
+    public string SourceNodeUuid { get; set; } = "";
+
+    /// <summary>The node the edge points to.</summary>
+    public string TargetNodeUuid { get; set; } = "";
+}
+
+/// <summary>An episode row (<c>episodes</c>).</summary>
+public sealed class EpisodeRecord : NodeRecord
+{
+    /// <summary>The source type's stored name: <c>message</c>, <c>json</c>, <c>text</c> or <c>fact_triple</c>.</summary>
+    public string Source { get; set; } = "";
+
+    /// <summary>Where the input came from.</summary>
+    public string SourceDescription { get; set; } = "";
+
+    /// <summary>The raw input.</summary>
+    public string Content { get; set; } = "";
+
+    /// <summary>The episode's reference time (UTC).</summary>
+    public DateTimeOffset ValidAt { get; set; }
+
+    /// <summary>Ids of the facts the episode produced.</summary>
+    public List<string> EntityEdges { get; set; } = [];
+
+    /// <summary>Caller metadata as a JSON object (<c>jsonb</c>), or <see langword="null"/>.</summary>
+    public string? EpisodeMetadata { get; set; }
+
+    /// <summary>Generated full-text vector over content, source and source description.</summary>
+    public NpgsqlTsVector SearchVector { get; set; } = null!;
+}
+
+/// <summary>An entity row (<c>entities</c>).</summary>
+public sealed class EntityNodeRecord : NodeRecord
+{
+    /// <summary>The evolving summary.</summary>
+    public string Summary { get; set; } = "";
+
+    /// <summary>Custom attributes as a JSON object (<c>jsonb</c>).</summary>
+    public string Attributes { get; set; } = "{}";
+
+    /// <summary>The name embedding (<c>vector(N)</c>).</summary>
+    public Vector? NameEmbedding { get; set; }
+
+    /// <summary>Generated full-text vector over name and summary.</summary>
+    public NpgsqlTsVector SearchVector { get; set; } = null!;
+}
+
+/// <summary>A community row (<c>communities</c>).</summary>
+public sealed class CommunityRecord : NodeRecord
+{
+    /// <summary>The members' summary.</summary>
+    public string Summary { get; set; } = "";
+
+    /// <summary>The name embedding (<c>vector(N)</c>).</summary>
+    public Vector? NameEmbedding { get; set; }
+
+    /// <summary>Generated full-text vector over the name.</summary>
+    public NpgsqlTsVector SearchVector { get; set; } = null!;
+}
+
+/// <summary>A saga row (<c>sagas</c>).</summary>
+public sealed class SagaRecord : NodeRecord
+{
+    /// <summary>The saga summary.</summary>
+    public string Summary { get; set; } = "";
+
+    /// <summary>The first episode.</summary>
+    public string? FirstEpisodeUuid { get; set; }
+
+    /// <summary>The latest episode.</summary>
+    public string? LastEpisodeUuid { get; set; }
+
+    /// <summary>When the summary was last updated.</summary>
+    public DateTimeOffset? LastSummarizedAt { get; set; }
+
+    /// <summary>The latest episode reference time the summary covers.</summary>
+    public DateTimeOffset? LastSummarizedEpisodeValidAt { get; set; }
+}
+
+/// <summary>An episode-to-entity link row (<c>episodic_edges</c>, upstream <c>MENTIONS</c>).</summary>
+public sealed class EpisodicEdgeRecord : EdgeRecord;
+
+/// <summary>A fact row (<c>entity_edges</c>, upstream <c>RELATES_TO</c>).</summary>
+public sealed class EntityEdgeRecord : EdgeRecord
+{
+    /// <summary>The relationship name.</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>The fact text.</summary>
+    public string Fact { get; set; } = "";
+
+    /// <summary>The fact embedding (<c>vector(N)</c>).</summary>
+    public Vector? FactEmbedding { get; set; }
+
+    /// <summary>Ids of the episodes that state the fact.</summary>
+    public List<string> Episodes { get; set; } = [];
+
+    /// <summary>When the fact was superseded.</summary>
+    public DateTimeOffset? ExpiredAt { get; set; }
+
+    /// <summary>When the fact became true.</summary>
+    public DateTimeOffset? ValidAt { get; set; }
+
+    /// <summary>When the fact stopped being true.</summary>
+    public DateTimeOffset? InvalidAt { get; set; }
+
+    /// <summary>The reference time of the episode that produced the fact.</summary>
+    public DateTimeOffset? ReferenceTime { get; set; }
+
+    /// <summary>Custom attributes as a JSON object (<c>jsonb</c>).</summary>
+    public string Attributes { get; set; } = "{}";
+
+    /// <summary>Generated full-text vector over name and fact.</summary>
+    public NpgsqlTsVector SearchVector { get; set; } = null!;
+}
+
+/// <summary>A community membership row (<c>community_edges</c>, upstream <c>HAS_MEMBER</c>).</summary>
+public sealed class CommunityEdgeRecord : EdgeRecord;
+
+/// <summary>A saga-to-episode row (<c>has_episode_edges</c>, upstream <c>HAS_EPISODE</c>).</summary>
+public sealed class HasEpisodeEdgeRecord : EdgeRecord;
+
+/// <summary>An episode chain row (<c>next_episode_edges</c>, upstream <c>NEXT_EPISODE</c>).</summary>
+public sealed class NextEpisodeEdgeRecord : EdgeRecord;

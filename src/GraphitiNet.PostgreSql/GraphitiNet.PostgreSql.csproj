@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GraphitiNet.Driver.PostgreSql</RootNamespace>
+    <PackageId>GraphitiNet.PostgreSql</PackageId>
+    <Description>PostgreSQL storage for graphiti-net through EF Core, with pgvector for vector search and built-in
+      full-text search.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Pgvector.EntityFrameworkCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="GraphitiNet.PostgreSql.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GraphitiNet.Core\GraphitiNet.Core.csproj" />
+  </ItemGroup>
+
+</Project>
