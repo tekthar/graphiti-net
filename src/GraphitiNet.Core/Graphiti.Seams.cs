@@ -31,7 +31,8 @@ public sealed partial class Graphiti
             IReadOnlyList<string>? excludedEntityTypes,
             string? customExtractionInstructions,
             CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        WireExtractNodesAsync(clients, episodes, previousEpisodes, entityTypes, excludedEntityTypes,
+            customExtractionInstructions, cancellationToken);
 
     // node_operations.resolve_extracted_nodes(clients, extracted_nodes, episode, previous_episodes, entity_types)
     //     -> (resolved_nodes, uuid_map, duplicate_pairs)
@@ -45,7 +46,7 @@ public sealed partial class Graphiti
             IReadOnlyList<EpisodicNode>? previousEpisodes,
             IReadOnlyDictionary<string, Type>? entityTypes,
             CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        WireResolveExtractedNodesAsync(clients, extractedNodes, episode, previousEpisodes, entityTypes, cancellationToken);
 
     // edge_operations.extract_edges(clients, episode, nodes, previous_episodes, edge_type_map, group_id, edge_types,
     //     strict_edge_types, custom_extraction_instructions) -> (extracted_edges, materialized_nodes)
@@ -62,7 +63,8 @@ public sealed partial class Graphiti
             bool strictEdgeTypes,
             string? customExtractionInstructions,
             CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.EdgeOperations.ExtractEdgesAsync(clients, episodes, nodes.ToList(), previousEpisodes, edgeTypeMap,
+            groupId, edgeTypes, strictEdgeTypes, customExtractionInstructions, cancellationToken);
 
     // bulk_utils.resolve_edge_pointers(edges, uuid_map) -> surviving edges (endpoints rewritten in place; edges whose
     // distinct endpoints collapse onto one node are dropped). Used for entity edges and episodic edges.
@@ -70,7 +72,7 @@ public sealed partial class Graphiti
         IReadOnlyList<TEdge> edges,
         IReadOnlyDictionary<string, string> uuidMap)
         where TEdge : Edge =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.BulkUtils.ResolveEdgePointers(edges, uuidMap).ToList();
 
     // edge_operations.resolve_extracted_edges(clients, extracted_edges, episode, entities, edge_types or {},
     //     edge_type_map) -> (resolved_edges, invalidated_edges, new_edges)
@@ -84,7 +86,8 @@ public sealed partial class Graphiti
             IReadOnlyDictionary<string, Type> edgeTypes,
             IReadOnlyDictionary<(string Source, string Target), IReadOnlyList<string>> edgeTypeMap,
             CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.EdgeOperations.ResolveExtractedEdgesAsync(clients, extractedEdges, episode, entities, edgeTypes,
+            edgeTypeMap, cancellationToken: cancellationToken);
 
     // node_operations.extract_attributes_from_nodes(clients, nodes, episode, previous_episodes, entity_types,
     //     edges=new_edges) -> hydrated nodes. add_episode passes its single episode and edges=new_edges; the bulk
@@ -97,7 +100,8 @@ public sealed partial class Graphiti
         IReadOnlyDictionary<string, Type>? entityTypes,
         IReadOnlyList<EntityEdge>? edges,
         CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.NodeOperations.ExtractAttributesFromNodesAsync(clients, nodes, episodes, previousEpisodes,
+            entityTypes, edges: edges, cancellationToken: cancellationToken);
 
     // edge_operations.build_episodic_edges(entity_nodes, episode_uuids, created_at, node_episode_index_map)
     private static IReadOnlyList<EpisodicEdge> BuildEpisodicEdges(
@@ -105,7 +109,7 @@ public sealed partial class Graphiti
         IReadOnlyList<string> episodeUuids,
         DateTimeOffset createdAt,
         IReadOnlyDictionary<string, IReadOnlyList<int>>? nodeEpisodeIndexMap) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.EdgeOperations.BuildEpisodicEdges(entityNodes, episodeUuids, createdAt, nodeEpisodeIndexMap);
 
     // edge_operations.resolve_extracted_edge(llm_client, extracted_edge, related_edges, existing_edges, episode,
     //     None, clients=clients) -> (resolved_edge, invalidated_edges, duplicates); add_triplet ignores the third.
@@ -116,17 +120,17 @@ public sealed partial class Graphiti
         IReadOnlyList<EntityEdge> existingEdges,
         EpisodicNode episode,
         CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        WireResolveExtractedEdgeAsync(clients, extractedEdge, relatedEdges, existingEdges, episode, cancellationToken);
 
     // edge_operations._pair_search_filter(edge): SearchFilters(edge_source_node_uuids=[src, tgt],
     //     edge_target_node_uuids=[src, tgt]).
     private static SearchFilters PairSearchFilter(EntityEdge edge) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.EdgeOperations.PairSearchFilter(edge);
 
     // edge_operations._same_pair_edges(extracted_edge, candidates): candidates between the same two endpoints, either
     // direction.
-    private static IReadOnlyList<EntityEdge> SamePairEdges(EntityEdge edge, IReadOnlyList<EntityEdge> candidates) =>
-        throw new NotImplementedException(NotWired);
+    private static List<EntityEdge> SamePairEdges(EntityEdge edge, IReadOnlyList<EntityEdge> candidates) =>
+        Maintenance.EdgeOperations.SamePairEdges(edge, candidates);
 
     // node_operations._extract_entity_summaries_batch(llm_client, [node], episode_batch, None, None, {},
     //     skip_fact_appending=True, clients=clients): previous_episodes=None, should_summarize_node=None,
@@ -138,7 +142,9 @@ public sealed partial class Graphiti
         IReadOnlyList<EntityNode> nodes,
         IReadOnlyList<EpisodicNode> episodeBatch,
         CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.NodeOperations.ExtractEntitySummariesBatchAsync(clients, nodes, episodeBatch, null, null,
+            new Dictionary<string, IReadOnlyList<EntityEdge>>(), skipFactAppending: true,
+            cancellationToken: cancellationToken);
 
     // bulk_utils.retrieve_previous_episodes_bulk(driver, episodes, max_coroutines=self.max_coroutines)
     //     -> [(episode, previous_episodes)]
@@ -217,5 +223,51 @@ public sealed partial class Graphiti
 
         await driver.AddNodesAndEdgesBulkAsync(episodicNodes, episodicEdges, entityNodes, entityEdges,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<(IReadOnlyList<EntityNode> Nodes, IReadOnlyDictionary<string, IReadOnlyList<int>>? NodeEpisodeIndexMap)>
+        WireExtractNodesAsync(
+            GraphitiClients clients,
+            IReadOnlyList<EpisodicNode> episodes,
+            IReadOnlyList<EpisodicNode> previousEpisodes,
+            IReadOnlyDictionary<string, Type>? entityTypes,
+            IReadOnlyList<string>? excludedEntityTypes,
+            string? customExtractionInstructions,
+            CancellationToken cancellationToken)
+    {
+        var (nodes, map) = await Maintenance.NodeOperations.ExtractNodesAsync(
+            clients, episodes, previousEpisodes, entityTypes, excludedEntityTypes, customExtractionInstructions,
+            cancellationToken).ConfigureAwait(false);
+        return (nodes, map);
+    }
+
+    private static async Task<(IReadOnlyList<EntityNode> Nodes, IReadOnlyDictionary<string, string> UuidMap,
+            IReadOnlyList<(EntityNode, EntityNode)> Duplicates)>
+        WireResolveExtractedNodesAsync(
+            GraphitiClients clients,
+            IReadOnlyList<EntityNode> extractedNodes,
+            EpisodicNode? episode,
+            IReadOnlyList<EpisodicNode>? previousEpisodes,
+            IReadOnlyDictionary<string, Type>? entityTypes,
+            CancellationToken cancellationToken)
+    {
+        var (nodes, uuidMap, duplicates) = await Maintenance.NodeOperations.ResolveExtractedNodesAsync(
+            clients, extractedNodes, episode, previousEpisodes, entityTypes, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return (nodes, uuidMap, duplicates.Select(d => (d.Extracted, d.Resolved)).ToList());
+    }
+
+    private static async Task<(EntityEdge Resolved, IReadOnlyList<EntityEdge> Invalidated)> WireResolveExtractedEdgeAsync(
+        GraphitiClients clients,
+        EntityEdge extractedEdge,
+        IReadOnlyList<EntityEdge> relatedEdges,
+        IReadOnlyList<EntityEdge> existingEdges,
+        EpisodicNode episode,
+        CancellationToken cancellationToken)
+    {
+        var (resolved, invalidated, _) = await Maintenance.EdgeOperations.ResolveExtractedEdgeAsync(
+            clients, extractedEdge, relatedEdges, existingEdges, episode, null, cancellationToken)
+            .ConfigureAwait(false);
+        return (resolved, invalidated);
     }
 }

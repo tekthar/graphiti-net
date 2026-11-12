@@ -127,8 +127,8 @@ public class AdditionsTests
         Assert.False(embedder.SecondEntered.Task.IsCompleted);
 
         embedder.Release();
-        await Assert.ThrowsAnyAsync<Exception>(() => first.WaitAsync(Timeout));
-        await Assert.ThrowsAnyAsync<Exception>(() => second.WaitAsync(Timeout));
+        await first.WaitAsync(Timeout);
+        await second.WaitAsync(Timeout);
         Assert.Equal(1, embedder.MaxConcurrent);
     }
 
@@ -149,8 +149,8 @@ public class AdditionsTests
         await embedder.SecondEntered.Task.WaitAsync(Timeout);
 
         embedder.Release();
-        await Assert.ThrowsAnyAsync<Exception>(() => first.WaitAsync(Timeout));
-        await Assert.ThrowsAnyAsync<Exception>(() => second.WaitAsync(Timeout));
+        await first.WaitAsync(Timeout);
+        await second.WaitAsync(Timeout);
         Assert.Equal(2, embedder.MaxConcurrent);
     }
 

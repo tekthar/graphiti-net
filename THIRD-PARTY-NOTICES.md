@@ -18,7 +18,11 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.Core/Embedder/EmbedderClient.cs` | `graphiti_core/embedder/client.py` |
 | `src/GraphitiNet.Core/Embedder/OpenAIEmbedder.cs` | `graphiti_core/embedder/openai.py` |
 | `src/GraphitiNet.Core/Errors.cs` | `graphiti_core/errors.py` |
+| `src/GraphitiNet.Core/Graphiti.Ingestion.cs` | `graphiti_core/graphiti.py` |
+| `src/GraphitiNet.Core/Graphiti.Seams.cs` | `graphiti_core/graphiti.py` |
+| `src/GraphitiNet.Core/Graphiti.cs` | `graphiti_core/graphiti.py` |
 | `src/GraphitiNet.Core/GraphitiClients.cs` | `graphiti_core/graphiti_types.py` |
+| `src/GraphitiNet.Core/GraphitiResults.cs` | `graphiti_core/graphiti.py (AddEpisodeResults, AddBulkEpisodeResults, AddTripletResults)`, `graphiti_core/utils/bulk_utils.py (RawEpisode)` |
 | `src/GraphitiNet.Core/Llm/AzureOpenAILLMClient.cs` | `graphiti_core/llm_client/azure_openai_client.py` |
 | `src/GraphitiNet.Core/Llm/BaseOpenAIClient.cs` | `graphiti_core/llm_client/openai_base_client.py` |
 | `src/GraphitiNet.Core/Llm/LLMCache.cs` | `graphiti_core/llm_client/cache.py` |
@@ -31,6 +35,7 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.Core/Llm/TokenUsageTracker.cs` | `graphiti_core/llm_client/token_tracker.py` |
 | `src/GraphitiNet.Core/Maintenance/AttributeUtils.cs` | `graphiti_core/utils/maintenance/attribute_utils.py` |
 | `src/GraphitiNet.Core/Maintenance/BulkUtils.cs` | `graphiti_core/utils/bulk_utils.py` |
+| `src/GraphitiNet.Core/Maintenance/CommunityOperations.cs` | `graphiti_core/utils/maintenance/community_operations.py` |
 | `src/GraphitiNet.Core/Maintenance/DanglingEndpoints.cs` | `graphiti_core/utils/maintenance/dangling_endpoints.py` |
 | `src/GraphitiNet.Core/Maintenance/DedupHelpers.cs` | `graphiti_core/utils/maintenance/dedup_helpers.py` |
 | `src/GraphitiNet.Core/Maintenance/EdgeOperations.cs` | `graphiti_core/utils/maintenance/edge_operations.py` |
@@ -40,6 +45,9 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.Core/Maintenance/TemporalEdgeUtils.cs` | `graphiti_core/utils/maintenance/temporal_edge_utils.py` |
 | `src/GraphitiNet.Core/Models/Edges.cs` | `graphiti_core/edges.py` |
 | `src/GraphitiNet.Core/Models/Nodes.cs` | `graphiti_core/nodes.py` |
+| `src/GraphitiNet.Core/Namespaces/EdgeNamespace.cs` | `graphiti_core/namespaces/edges.py` |
+| `src/GraphitiNet.Core/Namespaces/NodeNamespace.cs` | `graphiti_core/namespaces/nodes.py` |
+| `src/GraphitiNet.Core/Namespaces/RecordNamespace.cs` | `graphiti_core/namespaces/nodes.py`, `graphiti_core/namespaces/edges.py` |
 | `src/GraphitiNet.Core/Prompts/ChatPrompt.cs` | `graphiti_core/prompts/models.py` |
 | `src/GraphitiNet.Core/Prompts/DedupeEdges.cs` | `graphiti_core/prompts/dedupe_edges.py` |
 | `src/GraphitiNet.Core/Prompts/DedupeNodes.cs` | `graphiti_core/prompts/dedupe_nodes.py` |
@@ -62,6 +70,7 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.Core/Search/SearchTracing.cs` | `graphiti_core/search/search.py (_trace_phase)`, `graphiti_core/tracer.py` |
 | `src/GraphitiNet.Core/Search/SearchUtils.cs` | `graphiti_core/search/search_utils.py`, `graphiti_core/helpers.py (normalize_l2)` |
 | `src/GraphitiNet.Core/Utils/Concurrency.cs` | `graphiti_core/helpers.py` |
+| `src/GraphitiNet.Core/Utils/ContentChunking.cs` | `graphiti_core/utils/content_chunking.py`, `the CHUNK_* settings of graphiti_core/helpers.py` |
 | `src/GraphitiNet.Core/Utils/DateTimeUtils.cs` | `graphiti_core/utils/datetime_utils.py` |
 | `src/GraphitiNet.Core/Utils/TextUtils.cs` | `graphiti_core/utils/text_utils.py` |
 | `src/GraphitiNet.Core/Utils/Validation.cs` | `graphiti_core/helpers.py` |
@@ -71,6 +80,8 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.PostgreSql/Operations/SearchOperations.cs` | `graphiti_core/driver/neo4j/operations/search_ops.py`, `graphiti_core/search/search_utils.py` |
 | `tests/GraphitiNet.Core.Tests/CrossEncoder/ChatClientCrossEncoderTests.cs` | `tests/cross_encoder/test_gemini_reranker_client.py` |
 | `tests/GraphitiNet.Core.Tests/Embedder/OpenAIEmbedderTests.cs` | `tests/embedder/test_openai.py`, `tests/embedder/embedder_fixtures.py` |
+| `tests/GraphitiNet.Core.Tests/Graphiti/GraphitiTests.cs` | `tests/test_graphiti_mock.py (the parts that need no extraction)`, `tests/test_request_scope_concurrency.py`, `tests/test_add_triplet.py (signature-level parts)` |
+| `tests/GraphitiNet.Core.Tests/Graphiti/SagaTests.cs` | `tests/test_saga_refetch_episode_uuids.py`, `tests/test_saga_summary_budget.py` |
 | `tests/GraphitiNet.Core.Tests/Llm/LLMCacheTests.cs` | `tests/llm_client/test_cache.py` |
 | `tests/GraphitiNet.Core.Tests/Llm/LLMClientTests.cs` | `tests/llm_client/test_client.py` |
 | `tests/GraphitiNet.Core.Tests/Llm/LLMErrorsTests.cs` | `tests/llm_client/test_errors.py` |
@@ -79,6 +90,7 @@ Baseline: Graphiti v0.31.2.
 | `tests/GraphitiNet.Core.Tests/Llm/TokenUsageTrackerTests.cs` | `tests/llm_client/test_token_tracker.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/AttributeUtilsTests.cs` | `tests/utils/maintenance/test_attribute_utils.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/BulkUtilsEdgeTests.cs` | `tests/utils/maintenance/test_bulk_utils.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/CommunityOperationsTests.cs` | `tests/utils/maintenance/test_remove_communities.py`, `the community tests of tests/test_graphiti_mock.py (test_determine_entity_community, test_get_community_clusters)` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/DedupHelpersTests.cs` | `tests/utils/maintenance/test_node_operations.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/EdgeDedupScenarioTests.cs` | `tests/utils/maintenance/test_edge_dedup_scenarios.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/EdgeOperationsTests.cs` | `tests/utils/maintenance/test_edge_operations.py` |
@@ -92,6 +104,7 @@ Baseline: Graphiti v0.31.2.
 | `tests/GraphitiNet.Core.Tests/Search/SearchSecurityTests.cs` | `tests/utils/search/test_search_security.py` |
 | `tests/GraphitiNet.Core.Tests/Search/SearchTracingTests.cs` | `tests/utils/search/test_search_tracing.py` |
 | `tests/GraphitiNet.Core.Tests/Search/SearchUtilsTests.cs` | `tests/utils/search/search_utils_test.py` |
+| `tests/GraphitiNet.Core.Tests/Utils/ContentChunkingTests.cs` | `tests/utils/test_content_chunking.py` |
 | `tests/GraphitiNet.Core.Tests/Utils/TextUtilsTests.cs` | `tests/test_text_utils.py`, `tests/utils/test_concatenate_episodes.py` |
 | `tests/GraphitiNet.Core.Tests/Prompts/Fixtures/prompt_renders.json`, `response_schemas.json` | Prompt text and schemas generated from `graphiti_core/prompts/*.py` |
 | `tests/GraphitiNet.Core.Tests/Prompts/Fixtures/prompt_contexts.json` | The `upstream_test` context from `tests/prompts/test_legacy_prompt_compatibility.py` |

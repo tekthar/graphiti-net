@@ -301,7 +301,7 @@ public class GraphitiTests
         Assert.Equal("Alice has marker OLD_MARKER", (await driver.EntityNodeOps.GetByUuidAsync(alice.Uuid)).Summary);
     }
 
-    [Fact(Skip = AwaitingWiring)]
+    [Fact]
     public async Task Remove_episode_rebuilds_the_summary_from_the_remaining_episodes()
     {
         var llm = new ScriptedLlmClient("""{"summaries": [{"name": "Alice", "summary": "Alice works on the pilot project."}]}""");
@@ -331,7 +331,7 @@ public class GraphitiTests
         Assert.Single(await driver.EntityEdgeOps.GetByUuidsAsync([edge2.Uuid]));
     }
 
-    [Fact(Skip = AwaitingWiring)]
+    [Fact]
     public async Task Remove_episode_rebuilds_the_summary_in_batches()
     {
         var responses = new Queue<string>([
@@ -563,9 +563,9 @@ public class GraphitiTests
         await SaveAsync(driver, [], [], [alice, bob], []);
         var edge = Fact(group, alice, bob, "Alice manages Bob");
 
-        // The body stops at the first EdgeOperations seam until it is wired; the embeddings are already set.
-        await Assert.ThrowsAnyAsync<Exception>(() => graphiti.AddTripletAsync(alice, edge, bob));
+        var result = await graphiti.AddTripletAsync(alice, edge, bob);
         Assert.NotNull(edge.FactEmbedding);
+        Assert.Contains(result.Edges, e => e.Fact == "Alice manages Bob");
         Assert.Equal(alice.Uuid, edge.SourceNodeUuid);
         Assert.Equal(bob.Uuid, edge.TargetNodeUuid);
     }
