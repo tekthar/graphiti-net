@@ -24,29 +24,59 @@ Found while surveying the baseline. Fix these in [requirements.md](requirements.
 1. ~~**Sagas are missing.**~~ Fixed: the requirements now list all eight record types. `Graphiti.summarize_saga`
    is still to port.
 2. ~~**The concurrency default is wrong.**~~ Fixed: upstream's `DEFAULT_SEMAPHORE_LIMIT` is 20.
-3. **Newer features aren't covered.** We need to decide which are in the first release and which wait:
-   - combined node and edge extraction (`utils/maintenance/combined_extraction.py`,
-     `prompts/extract_nodes_and_edges.py`)
-   - content chunking for large episodes (`utils/content_chunking.py`)
-   - `add_triplet`
-   - the decisions and GLiNER2 LLM clients (`llm_client/openai_decisions_client.py`, `llm_client/gliner2_client.py`)
-   - token tracking and the LLM response cache (`llm_client/token_tracker.py`, `llm_client/cache.py`)
+3. ~~**Newer features aren't covered.**~~ Decided with the first consumer
+   ([#2](https://github.com/tekthar/graphiti-net/issues/2), item 3):
+
+   | Feature | First release? | Notes |
+   | --- | --- | --- |
+   | The default `add_episode` extraction path | Yes | Separate node and edge extraction, as v0.31.2's `add_episode` does |
+   | Combined node and edge extraction | With bulk ingest | `add_episode_bulk` uses it by default in v0.31.2 |
+   | Content chunking | Yes | A public utility; v0.31.2's `add_episode` doesn't call it, so behaviour is unchanged |
+   | `add_triplet` | Yes | Hosts add facts they already know without an extraction call |
+   | Token tracking | Yes | Also reported per `AddEpisodeAsync` call |
+   | LLM response cache | Yes | Optional; parity replay uses recorded answers instead (upstream's OpenAI client has no cache) |
+   | Decisions and GLiNER2 clients | Later | |
+
+## First consumer
+
+[AbpAgent](https://github.com/tekthar/abp-agent) is graphiti-net's first consumer. Its requirements are in
+[#1](https://github.com/tekthar/graphiti-net/issues/1) and its suggested order of work in
+[#2](https://github.com/tekthar/graphiti-net/issues/2). Everything below is additive: default behaviour stays
+upstream's.
+
+| Requirement | Where it lands |
+| --- | --- |
+| Episode access filter applied before the search limit (#1.1) | `SearchEngine` / `Graphiti.SearchAsync` option |
+| Strict episode removal; deleting a whole group (#1.2) | `Graphiti.RemoveEpisodeAsync(strict: true)`, group deletion |
+| One ingestion at a time per group (#1.3) | `IGroupLock`, in-process by default |
+| Call context and per-call token usage (#1.4) | `GraphitiCallContext`, `AddEpisodeResults` token usage |
+| Cancellation between steps, a budget gate before model calls (#1.5) | Pipeline and a model-call gate |
+| Host-owned tables: schema name and table prefix (#1.6) | PostgreSQL `ModelBuilder` extension options |
+| Keyword search per language (#1.7) | Text search configuration per group in the PostgreSQL driver |
+| Entities never merge across groups (#1) | Group-scoped deduplication, with a test |
+| One thin path from episode to search, tested in CI on PostgreSQL (#2.1) | CI runs a pgvector service |
+| Recorded upstream answers replayed on every commit (#2.2) | [parity/README.md](../parity/README.md) |
+| Episode removal in the ingestion phase (#2.4) | `RemoveEpisodeAsync` ships with `AddEpisodeAsync` |
+| Arabic parity dataset (#2.5) | `parity/datasets/arabic.json` |
 
 ## Progress
 
-Done:
+Done and merged:
 
-- Solution skeleton: `GraphitiNet.slnx`, `Directory.Build.props` (warnings as errors, recommended analyzers),
-  central package management, `global.json` pinning .NET 10.
-- `GraphitiNet.Core`, the layer with no dependencies:
-  - all eight record types (`Models/Nodes.cs`, `Models/Edges.cs`), as plain classes; storage moves to the graph
-    driver instead of `save()` methods on the records
-  - errors, UTC helpers, group id and node label validation
-  - the token usage tracker
-- Unit tests, including ports of `test_token_tracker.py` and `test_node_label_security.py`.
-- CI: build and unit tests on GitHub Actions.
+- Solution skeleton, central package management, CI with a pgvector service.
+- Core records, errors, validation, UTC and text helpers, token tracking.
+- The graph-driver contract, a driver conformance suite, and the in-memory driver (BM25 keyword ranking, as
+  upstream's Lucene).
+- The prompt library: every prompt matches upstream's text exactly, and every response schema matches Pydantic's.
+- LLM, embedder and reranker clients: OpenAI, OpenAI-compatible endpoints, Azure OpenAI, and adapters for any
+  Microsoft.Extensions.AI provider.
+- The search engine: every method, reranker and recipe.
+- Parity recordings of upstream's answers for two datasets.
 
-Next: the graph-driver interface and the EF Core model (Phase 1).
+In progress: the PostgreSQL driver, node and edge operations, the `Graphiti` class with communities and sagas, and
+the episode access filter.
+
+Next: wire `AddEpisodeAsync` end to end, replay the parity recordings in CI, then package a first preview.
 
 ## Phases
 
