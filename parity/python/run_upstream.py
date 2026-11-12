@@ -2,17 +2,25 @@
 # Licensed under the Apache License, Version 2.0. See LICENSE.
 """Run a parity dataset through Python Graphiti (the pinned release) and dump what it produced as JSON.
 
-Usage: python run_upstream.py <dataset.json> <output.json>
+Usage: python run_upstream.py <dataset.json> <output.json> [--record <recordings.json>]
+
+With --record, every LLM prompt and answer and every embedding is saved, so the .NET port can replay upstream's
+exact model answers on every commit at no token cost (see parity/README.md). Each recorded prompt is keyed by
+recording_key() below; the .NET replay client computes the same key.
 
 Reads the same settings as the .NET side (see docs/development.md): NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD,
 LLM_MODEL, SMALL_LLM_MODEL, EMBEDDING_MODEL, EMBEDDING_DIM, OPENAI_API_KEY.
 """
 
+import argparse
 import asyncio
+import base64
+import copy
+import hashlib
 import json
+import struct
 import logging
 import os
-import sys
 from datetime import datetime
 
 from graphiti_core import Graphiti
@@ -24,11 +32,74 @@ from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_config_recipes import COMBINED_HYBRID_SEARCH_RRF
 
 
+def recording_key(messages) -> str:
+    """SHA-256 of the prompt messages as built by the prompt library, before the LLM client appends anything."""
+    joined = '\u241e'.join(f'{m.role}\u241f{m.content}' for m in messages)
+    return hashlib.sha256(joined.encode('utf-8')).hexdigest()
+
+
+def pack_vector(vector) -> str:
+    return base64.b64encode(struct.pack(f'<{len(vector)}f', *vector)).decode('ascii')
+
+
+class Recorder:
+    def __init__(self):
+        self.llm: dict[str, dict] = {}
+        self.embeddings: dict[str, str] = {}
+
+    def wrap_llm(self, client):
+        original = client.generate_response
+
+        async def generate_response(messages, *args, **kwargs):
+            pristine = copy.deepcopy(messages)
+            response = await original(messages, *args, **kwargs)
+            response_model = kwargs.get('response_model', args[0] if args else None)
+            self.llm.setdefault(
+                recording_key(pristine),
+                {
+                    'prompt_name': kwargs.get('prompt_name'),
+                    'response_model': response_model.__name__ if response_model else None,
+                    'messages': [{'role': m.role, 'content': m.content} for m in pristine],
+                    'response': response,
+                },
+            )
+            return response
+
+        client.generate_response = generate_response
+
+    def wrap_embedder(self, embedder):
+        create, create_batch = embedder.create, embedder.create_batch
+
+        async def record_create(input_data):
+            vector = await create(input_data)
+            if isinstance(input_data, str):
+                self.embeddings.setdefault(input_data, pack_vector(vector))
+            return vector
+
+        async def record_create_batch(input_data_list):
+            vectors = await create_batch(input_data_list)
+            for text, vector in zip(input_data_list, vectors, strict=True):
+                self.embeddings.setdefault(text, pack_vector(vector))
+            return vectors
+
+        embedder.create, embedder.create_batch = record_create, record_create_batch
+
+    def save(self, path: str, settings: dict) -> None:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(
+                {'settings': settings, 'llm': self.llm, 'embeddings': self.embeddings},
+                f,
+                indent=1,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+
+
 def iso(value):
     return value.isoformat() if value is not None else None
 
 
-async def main(dataset_path: str, output_path: str) -> None:
+async def main(dataset_path: str, output_path: str, record_path: str | None) -> None:
     # Neo4j reports unknown property keys on a fresh database as warnings; they are noise here.
     logging.getLogger('neo4j.notifications').setLevel(logging.ERROR)
 
@@ -45,11 +116,16 @@ async def main(dataset_path: str, output_path: str) -> None:
             embedding_dim=int(os.environ.get('EMBEDDING_DIM', '1024')),
         )
     )
+    llm_client = OpenAIClient(llm_config)
+    recorder = Recorder() if record_path else None
+    if recorder:
+        recorder.wrap_llm(llm_client)
+        recorder.wrap_embedder(embedder)
     graphiti = Graphiti(
         os.environ.get('NEO4J_URI', 'bolt://localhost:7687'),
         os.environ.get('NEO4J_USER', 'neo4j'),
         os.environ['NEO4J_PASSWORD'],
-        llm_client=OpenAIClient(llm_config),
+        llm_client=llm_client,
         embedder=embedder,
         cross_encoder=OpenAIRerankerClient(llm_config),
     )
@@ -121,9 +197,26 @@ async def main(dataset_path: str, output_path: str) -> None:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
         print(f'{len(result["entities"])} entities, {len(result["facts"])} facts -> {output_path}')
+        if recorder and record_path:
+            recorder.save(
+                record_path,
+                {
+                    'graphiti_core': '0.31.2',
+                    'llm_model': llm_config.model,
+                    'small_llm_model': llm_config.small_model,
+                    'embedding_model': embedder.config.embedding_model,
+                    'embedding_dim': embedder.config.embedding_dim,
+                },
+            )
+            print(f'{len(recorder.llm)} prompts, {len(recorder.embeddings)} embeddings -> {record_path}')
     finally:
         await graphiti.close()
 
 
 if __name__ == '__main__':
-    asyncio.run(main(sys.argv[1], sys.argv[2]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('dataset')
+    parser.add_argument('output')
+    parser.add_argument('--record', help='save prompts, answers and embeddings to this file')
+    arguments = parser.parse_args()
+    asyncio.run(main(arguments.dataset, arguments.output, arguments.record))

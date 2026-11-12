@@ -15,6 +15,21 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: graphiti_pg_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GRAPHITI_TEST_POSTGRES: "Host=localhost;Username=postgres;Password=postgres;Database=graphiti_pg_tests"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
