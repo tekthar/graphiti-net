@@ -72,6 +72,8 @@ Done and merged:
   Microsoft.Extensions.AI provider.
 - The search engine: every method, reranker and recipe.
 - Parity recordings of upstream's answers for two datasets.
+- Bulk ingest (`AddEpisodeBulkAsync`, with combined entity and fact extraction by default), replayed against a
+  recorded upstream `add_episode_bulk` run on every commit.
 
 In progress: the PostgreSQL driver, node and edge operations, the `Graphiti` class with communities and sagas, and
 the episode access filter.

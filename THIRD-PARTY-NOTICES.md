@@ -35,6 +35,7 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.Core/Llm/TokenUsageTracker.cs` | `graphiti_core/llm_client/token_tracker.py` |
 | `src/GraphitiNet.Core/Maintenance/AttributeUtils.cs` | `graphiti_core/utils/maintenance/attribute_utils.py` |
 | `src/GraphitiNet.Core/Maintenance/BulkUtils.cs` | `graphiti_core/utils/bulk_utils.py` |
+| `src/GraphitiNet.Core/Maintenance/CombinedExtractionOperations.cs` | `graphiti_core/utils/maintenance/combined_extraction.py` |
 | `src/GraphitiNet.Core/Maintenance/CommunityOperations.cs` | `graphiti_core/utils/maintenance/community_operations.py` |
 | `src/GraphitiNet.Core/Maintenance/DanglingEndpoints.cs` | `graphiti_core/utils/maintenance/dangling_endpoints.py` |
 | `src/GraphitiNet.Core/Maintenance/DedupHelpers.cs` | `graphiti_core/utils/maintenance/dedup_helpers.py` |
@@ -80,6 +81,7 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.PostgreSql/Operations/SearchOperations.cs` | `graphiti_core/driver/neo4j/operations/search_ops.py`, `graphiti_core/search/search_utils.py` |
 | `tests/GraphitiNet.Core.Tests/CrossEncoder/ChatClientCrossEncoderTests.cs` | `tests/cross_encoder/test_gemini_reranker_client.py` |
 | `tests/GraphitiNet.Core.Tests/Embedder/OpenAIEmbedderTests.cs` | `tests/embedder/test_openai.py`, `tests/embedder/embedder_fixtures.py` |
+| `tests/GraphitiNet.Core.Tests/Graphiti/AddEpisodeBulkTests.cs` | `tests/test_graphiti_mock.py (test_add_bulk)` |
 | `tests/GraphitiNet.Core.Tests/Graphiti/GraphitiTests.cs` | `tests/test_graphiti_mock.py (the parts that need no extraction)`, `tests/test_request_scope_concurrency.py`, `tests/test_add_triplet.py (signature-level parts)` |
 | `tests/GraphitiNet.Core.Tests/Graphiti/SagaTests.cs` | `tests/test_saga_refetch_episode_uuids.py`, `tests/test_saga_summary_budget.py` |
 | `tests/GraphitiNet.Core.Tests/Llm/LLMCacheTests.cs` | `tests/llm_client/test_cache.py` |
@@ -90,6 +92,8 @@ Baseline: Graphiti v0.31.2.
 | `tests/GraphitiNet.Core.Tests/Llm/TokenUsageTrackerTests.cs` | `tests/llm_client/test_token_tracker.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/AttributeUtilsTests.cs` | `tests/utils/maintenance/test_attribute_utils.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/BulkUtilsEdgeTests.cs` | `tests/utils/maintenance/test_bulk_utils.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/BulkUtilsTests.cs` | `tests/utils/maintenance/test_bulk_utils.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/CombinedExtractionTests.cs` | `tests/utils/maintenance/test_combined_extraction.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/CommunityOperationsTests.cs` | `tests/utils/maintenance/test_remove_communities.py`, `the community tests of tests/test_graphiti_mock.py (test_determine_entity_community, test_get_community_clusters)` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/DedupHelpersTests.cs` | `tests/utils/maintenance/test_node_operations.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/EdgeDedupScenarioTests.cs` | `tests/utils/maintenance/test_edge_dedup_scenarios.py` |

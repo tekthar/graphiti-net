@@ -15,6 +15,11 @@ public class ParityRunTests(ITestOutputHelper output)
     public Task Ingestion_matches_upstream_on_recorded_answers(string dataset) =>
         RunAsync(dataset, new InMemoryGraphDriver());
 
+    [Theory]
+    [InlineData("customer-support")]
+    public Task Bulk_ingestion_matches_upstream_on_recorded_answers(string dataset) =>
+        RunAsync(dataset, new InMemoryGraphDriver(), bulk: true);
+
     // customer-support on PostgreSQL is a known gap: PostgreSQL ranks keyword matches with ts_rank, not BM25, so in one
     // fact-resolution step a different fact makes the candidate cut-off than on Neo4j. Tracked in docs/roadmap.md.
     [Fact(Skip = "Known gap: PostgreSQL keyword ranking (ts_rank, not BM25) changes one fact-resolution candidate set.")]
@@ -22,8 +27,13 @@ public class ParityRunTests(ITestOutputHelper output)
         Ingestion_on_postgresql_matches_upstream_on_recorded_answers("customer-support");
 
     [SkippableTheory]
+    [InlineData("customer-support")]
+    public Task Bulk_ingestion_on_postgresql_matches_upstream_on_recorded_answers(string dataset) =>
+        Ingestion_on_postgresql_matches_upstream_on_recorded_answers(dataset, bulk: true);
+
+    [SkippableTheory]
     [InlineData("arabic")]
-    public async Task Ingestion_on_postgresql_matches_upstream_on_recorded_answers(string dataset)
+    public async Task Ingestion_on_postgresql_matches_upstream_on_recorded_answers(string dataset, bool bulk = false)
     {
         var connection = Environment.GetEnvironmentVariable("GRAPHITI_TEST_POSTGRES")
             ?? "Host=localhost;Username=postgres;Password=postgres;Database=graphiti_pg_tests";
@@ -32,7 +42,10 @@ public class ParityRunTests(ITestOutputHelper output)
         {
             driver = new GraphitiNet.Driver.PostgreSql.PostgresDriver(
                 connection,
-                new GraphitiNet.Driver.PostgreSql.PostgresGraphOptions { Schema = "parity_" + dataset.Replace('-', '_') });
+                new GraphitiNet.Driver.PostgreSql.PostgresGraphOptions
+                {
+                    Schema = "parity_" + dataset.Replace('-', '_') + (bulk ? "_bulk" : ""),
+                });
             await driver.GraphOps.BuildIndicesAndConstraintsAsync(deleteExisting: true);
         }
         catch (Exception e) when (e is Npgsql.NpgsqlException or System.Net.Sockets.SocketException or TimeoutException)
@@ -41,10 +54,10 @@ public class ParityRunTests(ITestOutputHelper output)
             return;
         }
 
-        await RunAsync(dataset, driver);
+        await RunAsync(dataset, driver, bulk);
     }
 
-    private async Task RunAsync(string dataset, GraphitiNet.Driver.IGraphDriver driver)
+    private async Task RunAsync(string dataset, GraphitiNet.Driver.IGraphDriver driver, bool bulk = false)
     {
         var llm0 = (ReplayLLMClient?)null;
         ParityResult port;
@@ -52,7 +65,7 @@ public class ParityRunTests(ITestOutputHelper output)
         ReplayEmbedder embedder;
         try
         {
-            (port, llm, embedder) = await ParityRunner.RunAsync(dataset, driver, l => llm0 = l);
+            (port, llm, embedder) = await ParityRunner.RunAsync(dataset, driver, l => llm0 = l, bulk);
         }
         catch (UnrecordedCallException)
         {
@@ -61,7 +74,7 @@ public class ParityRunTests(ITestOutputHelper output)
             throw;
         }
 
-        var upstream = ParityResult.LoadUpstream(dataset);
+        var upstream = ParityResult.LoadUpstream(bulk ? ParityRunner.BulkRecording(dataset) : dataset);
         var report = ParityComparison.Compare(upstream, port);
         output.WriteLine(report.ToString());
 

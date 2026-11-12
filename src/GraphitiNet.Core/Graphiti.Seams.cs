@@ -13,12 +13,9 @@ namespace GraphitiNet;
 
 // The calls from Graphiti into the extraction and resolution pipeline (Maintenance/NodeOperations,
 // Maintenance/EdgeOperations, Maintenance/BulkUtils). Each seam is one call; the comment above it names the upstream
-// function and the arguments upstream passes. Seams that throw NotImplementedException are wired once those
-// operations are merged.
+// function and the arguments upstream passes.
 public sealed partial class Graphiti
 {
-    private const string NotWired = "wired after NodeOperations/EdgeOperations merge";
-
     // node_operations.extract_nodes(clients, episode, previous_episodes, entity_types, excluded_entity_types,
     //     custom_extraction_instructions) -> (extracted_nodes, node_episode_index_map)
     // add_episode passes its single episode (here episodes[0]).
@@ -153,7 +150,7 @@ public sealed partial class Graphiti
             IGraphDriver driver,
             IReadOnlyList<EpisodicNode> episodes,
             CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.BulkUtils.RetrievePreviousEpisodesBulkAsync(driver, episodes, MaxCoroutines, cancellationToken);
 
     // bulk_utils.extract_nodes_and_edges_bulk(clients, episode_context, edge_type_map=..., entity_types=...,
     //     excluded_entity_types=..., edge_types=..., custom_extraction_instructions=...,
@@ -170,7 +167,9 @@ public sealed partial class Graphiti
             bool useCombinedExtraction,
             bool strictEdgeTypes,
             CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.BulkUtils.ExtractNodesAndEdgesBulkAsync(clients, episodeContext, edgeTypeMap, entityTypes,
+            excludedEntityTypes, edgeTypes, customExtractionInstructions, useCombinedExtraction, strictEdgeTypes,
+            cancellationToken);
 
     // bulk_utils.dedupe_nodes_bulk(clients, extracted_nodes, episode_context, entity_types)
     //     -> (nodes_by_episode uuid, uuid_map)
@@ -182,7 +181,8 @@ public sealed partial class Graphiti
             IReadOnlyList<(EpisodicNode Episode, IReadOnlyList<EpisodicNode> PreviousEpisodes)> episodeContext,
             IReadOnlyDictionary<string, Type>? entityTypes,
             CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.BulkUtils.DedupeNodesBulkAsync(clients, extractedNodes, episodeContext, entityTypes,
+            cancellationToken);
 
     // bulk_utils.dedupe_edges_bulk(clients, extracted_edges, episode_context, [], edge_types or {}, edge_type_map)
     //     -> edges_by_episode uuid
@@ -194,36 +194,22 @@ public sealed partial class Graphiti
         IReadOnlyDictionary<string, Type> edgeTypes,
         IReadOnlyDictionary<(string Source, string Target), IReadOnlyList<string>> edgeTypeMap,
         CancellationToken cancellationToken) =>
-        throw new NotImplementedException(NotWired);
+        Maintenance.BulkUtils.DedupeEdgesBulkAsync(clients, extractedEdges, episodeContext, entities, edgeTypes,
+            edgeTypeMap, cancellationToken);
 
     // bulk_utils.add_nodes_and_edges_bulk(driver, episodic_nodes, episodic_edges, entity_nodes, entity_edges,
     //     embedder): embeds entity names and facts that have no embedding yet, then saves everything in one
-    // transaction. Implemented here so episodes and triplets can be saved now; switch to BulkUtils'
-    // AddNodesAndEdgesBulkAsync once merged if it differs.
-    private static async Task AddNodesAndEdgesBulkAsync(
+    // transaction.
+    private static Task AddNodesAndEdgesBulkAsync(
         IGraphDriver driver,
         IReadOnlyList<EpisodicNode> episodicNodes,
         IReadOnlyList<EpisodicEdge> episodicEdges,
         IReadOnlyList<EntityNode> entityNodes,
         IReadOnlyList<EntityEdge> entityEdges,
         EmbedderClient embedder,
-        CancellationToken cancellationToken)
-    {
-        foreach (var node in entityNodes)
-        {
-            node.NameEmbedding ??= await Llm.LLMUtils.GenerateEmbeddingAsync(embedder, node.Name, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        foreach (var edge in entityEdges)
-        {
-            edge.FactEmbedding ??= await Llm.LLMUtils.GenerateEmbeddingAsync(embedder, edge.Fact, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        await driver.AddNodesAndEdgesBulkAsync(episodicNodes, episodicEdges, entityNodes, entityEdges,
-            cancellationToken).ConfigureAwait(false);
-    }
+        CancellationToken cancellationToken) =>
+        Maintenance.BulkUtils.AddNodesAndEdgesBulkAsync(driver, episodicNodes, episodicEdges, entityNodes,
+            entityEdges, embedder, cancellationToken);
 
     private static async Task<(IReadOnlyList<EntityNode> Nodes, IReadOnlyDictionary<string, IReadOnlyList<int>>? NodeEpisodeIndexMap)>
         WireExtractNodesAsync(

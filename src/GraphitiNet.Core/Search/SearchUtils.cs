@@ -624,7 +624,7 @@ public static class SearchUtils
         return array;
     }
 
-    private static double Dot(double[] a, double[] b)
+    internal static double Dot(double[] a, double[] b)
     {
         if (a.Length != b.Length)
         {

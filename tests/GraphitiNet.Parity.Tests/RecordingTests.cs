@@ -8,6 +8,7 @@ public class RecordingTests
     [Theory]
     [InlineData("customer-support")]
     [InlineData("arabic")]
+    [InlineData("customer-support-bulk")]
     public void Keys_computed_in_dotnet_match_the_python_recorder(string dataset)
     {
         var recording = Recording.Load(dataset);
@@ -22,6 +23,7 @@ public class RecordingTests
     [Theory]
     [InlineData("customer-support")]
     [InlineData("arabic")]
+    [InlineData("customer-support-bulk")]
     public void Embeddings_decode_to_the_recorded_size(string dataset)
     {
         var recording = Recording.Load(dataset);

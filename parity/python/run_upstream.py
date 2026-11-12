@@ -2,7 +2,10 @@
 # Licensed under the Apache License, Version 2.0. See LICENSE.
 """Run a parity dataset through Python Graphiti (the pinned release) and dump what it produced as JSON.
 
-Usage: python run_upstream.py <dataset.json> <output.json> [--record <recordings.json>]
+Usage: python run_upstream.py <dataset.json> <output.json> [--record <recordings.json>] [--bulk]
+
+With --bulk, the whole dataset is ingested with one add_episode_bulk call instead of one add_episode call per
+episode.
 
 With --record, every LLM prompt and answer and every embedding is saved, so the .NET port can replay upstream's
 exact model answers on every commit at no token cost (see parity/README.md). Each recorded prompt is keyed by
@@ -30,6 +33,7 @@ from graphiti_core.llm_client.config import LLMConfig
 from graphiti_core.llm_client.openai_client import OpenAIClient
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.search.search_config_recipes import COMBINED_HYBRID_SEARCH_RRF
+from graphiti_core.utils.bulk_utils import RawEpisode
 
 
 def recording_key(messages) -> str:
@@ -101,7 +105,7 @@ def iso(value):
     return value.isoformat() if value is not None else None
 
 
-async def main(dataset_path: str, output_path: str, record_path: str | None) -> None:
+async def main(dataset_path: str, output_path: str, record_path: str | None, bulk: bool = False) -> None:
     # Neo4j reports unknown property keys on a fresh database as warnings; they are noise here.
     logging.getLogger('neo4j.notifications').setLevel(logging.ERROR)
 
@@ -136,15 +140,30 @@ async def main(dataset_path: str, output_path: str, record_path: str | None) -> 
         await graphiti.build_indices_and_constraints()
         await graphiti.driver.execute_query('MATCH (n {group_id: $g}) DETACH DELETE n', g=group_id)
 
-        for episode in dataset['episodes']:
-            await graphiti.add_episode(
-                name=episode['name'],
-                episode_body=episode['content'],
-                source_description=episode['source_description'],
-                reference_time=datetime.fromisoformat(episode['reference_time']),
-                source=EpisodeType.from_str(episode['source']),
+        if bulk:
+            await graphiti.add_episode_bulk(
+                [
+                    RawEpisode(
+                        name=episode['name'],
+                        content=episode['content'],
+                        source_description=episode['source_description'],
+                        source=EpisodeType.from_str(episode['source']),
+                        reference_time=datetime.fromisoformat(episode['reference_time']),
+                    )
+                    for episode in dataset['episodes']
+                ],
                 group_id=group_id,
             )
+        else:
+            for episode in dataset['episodes']:
+                await graphiti.add_episode(
+                    name=episode['name'],
+                    episode_body=episode['content'],
+                    source_description=episode['source_description'],
+                    reference_time=datetime.fromisoformat(episode['reference_time']),
+                    source=EpisodeType.from_str(episode['source']),
+                    group_id=group_id,
+                )
 
         nodes, _, _ = await graphiti.driver.execute_query(
             'MATCH (n:Entity {group_id: $g}) RETURN n.name AS name, labels(n) AS labels, n.summary AS summary',
@@ -175,6 +194,7 @@ async def main(dataset_path: str, output_path: str, record_path: str | None) -> 
         result = {
             'implementation': 'graphiti-core',
             'dataset': dataset['name'],
+            'mode': 'bulk' if bulk else 'sequential',
             'entities': sorted(
                 ({'name': r['name'], 'labels': sorted(r['labels']), 'summary': r['summary']} for r in nodes),
                 key=lambda n: n['name'],
@@ -220,5 +240,6 @@ if __name__ == '__main__':
     parser.add_argument('dataset')
     parser.add_argument('output')
     parser.add_argument('--record', help='save prompts, answers and embeddings to this file')
+    parser.add_argument('--bulk', action='store_true', help='ingest with one add_episode_bulk call')
     arguments = parser.parse_args()
-    asyncio.run(main(arguments.dataset, arguments.output, arguments.record))
+    asyncio.run(main(arguments.dataset, arguments.output, arguments.record, arguments.bulk))
