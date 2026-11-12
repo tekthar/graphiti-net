@@ -39,7 +39,9 @@ public sealed partial class Graphiti
     /// <param name="source">The kind of content.</param>
     /// <param name="groupId">The graph partition; <see langword="null"/> means the provider's default group
     /// (empty).</param>
-    /// <param name="uuid">An existing episode to (re)process instead of creating one.</param>
+    /// <param name="uuid">An existing episode to (re)process instead of creating one. It is processed in its own
+    /// group: <paramref name="groupId"/> may be omitted, and naming another group throws
+    /// <see cref="ArgumentException"/> (graphiti-net; upstream would mix the two groups).</param>
     /// <param name="updateCommunities">Also fold the episode's entities into their communities.</param>
     /// <param name="entityTypes">Custom entity types: names and the classes whose properties become
     /// attributes.</param>
@@ -59,7 +61,8 @@ public sealed partial class Graphiti
     /// <param name="cancellationToken">Cancels between steps.</param>
     /// <returns>What was added or changed, with this call's token usage.</returns>
     /// <exception cref="EntityTypeValidationException">A custom entity type uses a protected attribute.</exception>
-    /// <exception cref="ArgumentException">An excluded entity type is unknown.</exception>
+    /// <exception cref="ArgumentException">An excluded entity type is unknown, or the episode named by
+    /// <paramref name="uuid"/> belongs to another group than <paramref name="groupId"/>.</exception>
     /// <exception cref="GroupIdValidationException">The group id has invalid characters.</exception>
     /// <exception cref="ModelCallRefusedException">The model call gate refused a call.</exception>
     public async Task<AddEpisodeResults> AddEpisodeAsync(
@@ -88,7 +91,13 @@ public sealed partial class Graphiti
         EntityTypesUtils.ValidateEntityTypes(entityTypes);
         EntityTypesUtils.ValidateExcludedEntityTypes(excludedEntityTypes, entityTypes);
 
-        var (resolvedGroupId, driver, clients) = ResolveRequestScope(groupId);
+        // graphiti-net: a stored episode is processed in its own group, so its lock is the one taken and no other
+        // group's episodes become its context.
+        var storedGroupId = uuid is null
+            ? null
+            : (await Driver.EpisodeNodeOps.GetByUuidAsync(uuid, cancellationToken).ConfigureAwait(false)).GroupId;
+        var (resolvedGroupId, driver, clients) = ResolveRequestScope(groupId ?? storedGroupId);
+        EnsureEpisodeInGroup(uuid, storedGroupId, resolvedGroupId);
 
         await using var groupLock = await GroupLock.AcquireAsync(resolvedGroupId, cancellationToken)
             .ConfigureAwait(false);
@@ -128,6 +137,9 @@ public sealed partial class Graphiti
 
             if (uuid is not null)
             {
+                // Read again under the lock; a write may have changed it meanwhile.
+                EnsureEpisodeInGroup(uuid, episode.GroupId, resolvedGroupId);
+
                 // Reprocessing a stored episode: it must not be its own context (upstream would include it).
                 previousEpisodes = previousEpisodes.Where(previous => previous.Uuid != episode.Uuid).ToList();
             }
@@ -276,7 +288,8 @@ public sealed partial class Graphiti
     /// As upstream, bulk ingestion keeps episode content even when <see cref="StoreRawEpisodeContent"/> is
     /// <see langword="false"/>, does not update communities, and saves the episodes first.
     /// </remarks>
-    /// <param name="bulkEpisodes">The episodes.</param>
+    /// <param name="bulkEpisodes">The episodes. An episode with a <see cref="RawEpisode.Uuid"/> is read from storage
+    /// and must belong to the group (<see cref="ArgumentException"/> otherwise).</param>
     /// <param name="groupId">The graph partition; <see langword="null"/> means the default group.</param>
     /// <param name="entityTypes">Custom entity types.</param>
     /// <param name="excludedEntityTypes">Entity types to leave out.</param>
@@ -323,20 +336,26 @@ public sealed partial class Graphiti
             var episodes = new List<EpisodicNode>();
             foreach (var raw in bulkEpisodes)
             {
-                episodes.Add(raw.Uuid is not null
-                    ? await driver.EpisodeNodeOps.GetByUuidAsync(raw.Uuid, cancellationToken).ConfigureAwait(false)
-                    : new EpisodicNode
-                    {
-                        Name = raw.Name,
-                        Labels = [],
-                        Source = raw.Source,
-                        Content = raw.Content,
-                        SourceDescription = raw.SourceDescription,
-                        GroupId = resolvedGroupId,
-                        CreatedAt = now,
-                        ValidAt = raw.ReferenceTime,
-                        EpisodeMetadata = raw.EpisodeMetadata,
-                    });
+                EpisodicNode? stored = null;
+                if (raw.Uuid is not null)
+                {
+                    stored = await driver.EpisodeNodeOps.GetByUuidAsync(raw.Uuid, cancellationToken)
+                        .ConfigureAwait(false);
+                    EnsureEpisodeInGroup(raw.Uuid, stored.GroupId, resolvedGroupId);
+                }
+
+                episodes.Add(stored ?? new EpisodicNode
+                {
+                    Name = raw.Name,
+                    Labels = [],
+                    Source = raw.Source,
+                    Content = raw.Content,
+                    SourceDescription = raw.SourceDescription,
+                    GroupId = resolvedGroupId,
+                    CreatedAt = now,
+                    ValidAt = raw.ReferenceTime,
+                    EpisodeMetadata = raw.EpisodeMetadata,
+                });
             }
 
             // Save all episodes.
@@ -1213,6 +1232,17 @@ public sealed partial class Graphiti
         var resolvedEdges = edgeResults.SelectMany(result => result.Resolved).ToList();
         var invalidatedEdges = edgeResults.SelectMany(result => result.Invalidated).ToList();
         return (finalHydratedNodes, resolvedEdges, invalidatedEdges, uuidMap);
+    }
+
+    // graphiti-net: a stored episode is only (re)processed in its own group. Upstream would extract it with another
+    // group's episodes as context and write its facts to that group.
+    private static void EnsureEpisodeInGroup(string? uuid, string? storedGroupId, string groupId)
+    {
+        if (uuid is not null && !string.Equals(storedGroupId, groupId, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Episode {uuid} belongs to group '{storedGroupId}', not '{groupId}'.", nameof(uuid));
+        }
     }
 
     private async Task<EntityNode> GetOrResolveNodeAsync(EntityNode node, CancellationToken cancellationToken)

@@ -296,4 +296,92 @@ public class AdditionsTests
         Assert.Equal(1, embedder.Calls);
         Assert.Contains(seen, call => call.Kind == ModelCallKind.Embedding);
     }
+    // Group isolation when reprocessing a stored episode
+
+    [Fact]
+    public async Task Reprocessing_by_uuid_without_a_group_works_in_the_episodes_group()
+    {
+        var llm = new ScriptedLlmClient("""{"extracted_entities": [], "edges": []}""");
+        var groupLock = new InProcessGroupLock();
+        await using var graphiti = Create(out var driver, llm, groupLock: groupLock);
+        var group = NewGroup();
+        var stored = Episode(group, "Alice likes Bob", Now);
+        await driver.EpisodeNodeOps.SaveAsync(stored);
+        await driver.EpisodeNodeOps.SaveAsync(Episode("", "SECRET of the default group", Now.AddMinutes(-1)));
+
+        var held = await groupLock.AcquireAsync(group);
+        var adding = graphiti.AddEpisodeAsync("ignored", "ignored", "ignored", Now, uuid: stored.Uuid);
+        await Task.Delay(50);
+        Assert.False(adding.IsCompleted);
+        await held.DisposeAsync();
+        var result = await adding.WaitAsync(Timeout);
+
+        Assert.Equal(group, result.Episode.GroupId);
+        Assert.NotEmpty(llm.Calls);
+        Assert.All(llm.Calls, call =>
+        {
+            Assert.DoesNotContain("SECRET", call.Text, StringComparison.Ordinal);
+            Assert.Equal(group, call.Context!.GroupId);
+        });
+    }
+
+    [Fact]
+    public async Task Reprocessing_by_uuid_in_another_group_is_refused()
+    {
+        var llm = new ScriptedLlmClient("{}");
+        await using var graphiti = Create(out var driver, llm);
+        var stored = Episode(NewGroup(), "Alice likes Bob", Now);
+        await driver.EpisodeNodeOps.SaveAsync(stored);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            graphiti.AddEpisodeAsync("n", "b", "d", Now, groupId: NewGroup(), uuid: stored.Uuid));
+        await Assert.ThrowsAsync<ArgumentException>(() => graphiti.AddEpisodeBulkAsync(
+            [new RawEpisode { Name = "n", Content = "b", SourceDescription = "d", ReferenceTime = Now, Source = EpisodeType.Text, Uuid = stored.Uuid }],
+            groupId: NewGroup()));
+        Assert.Empty(llm.Calls);
+    }
+
+    // Other writes take the group lock
+
+    [Fact]
+    public async Task Summarize_saga_waits_for_the_groups_lock()
+    {
+        var llm = new ScriptedLlmClient("""{"summary": "s"}""");
+        var groupLock = new InProcessGroupLock();
+        await using var graphiti = Create(out var driver, llm, groupLock: groupLock);
+        var group = NewGroup();
+        var saga = new SagaNode { Name = "chat", GroupId = group, CreatedAt = Now };
+        await driver.SagaNodeOps.SaveAsync(saga);
+        var episode = Episode(group, "hello", Now);
+        await driver.EpisodeNodeOps.SaveAsync(episode);
+        await driver.HasEpisodeEdgeOps.SaveAsync(new HasEpisodeEdge
+        {
+            GroupId = group, SourceNodeUuid = saga.Uuid, TargetNodeUuid = episode.Uuid, CreatedAt = Now,
+        });
+
+        var held = await groupLock.AcquireAsync(group);
+        var summarizing = graphiti.SummarizeSagaAsync(saga.Uuid);
+        await Task.Delay(50);
+        Assert.False(summarizing.IsCompleted);
+        Assert.Empty(llm.Calls);
+
+        await held.DisposeAsync();
+        Assert.Equal("s", (await summarizing.WaitAsync(Timeout)).Summary);
+    }
+
+    [Fact]
+    public async Task Build_communities_waits_for_the_groups_lock()
+    {
+        var groupLock = new InProcessGroupLock();
+        await using var graphiti = Create(out _, groupLock: groupLock);
+        var group = NewGroup();
+
+        var held = await groupLock.AcquireAsync(group);
+        var building = graphiti.BuildCommunitiesAsync([group]);
+        await Task.Delay(50);
+        Assert.False(building.IsCompleted);
+
+        await held.DisposeAsync();
+        await building.WaitAsync(Timeout);
+    }
 }

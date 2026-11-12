@@ -253,24 +253,9 @@ public sealed partial class Graphiti : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         Validation.ValidateGroupIds(groupIds);
-        var held = new List<IAsyncDisposable>();
-        try
-        {
-            // A fixed order, so two clears of overlapping groups cannot deadlock.
-            foreach (var groupId in (groupIds ?? []).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
-            {
-                held.Add(await GroupLock.AcquireAsync(groupId, cancellationToken).ConfigureAwait(false));
-            }
-
-            await Driver.GraphOps.ClearDataAsync(groupIds, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            for (var i = held.Count - 1; i >= 0; i--)
-            {
-                await held[i].DisposeAsync().ConfigureAwait(false);
-            }
-        }
+        await using var groupLocks = await AcquireGroupLocksAsync(groupIds ?? [], cancellationToken)
+            .ConfigureAwait(false);
+        await Driver.GraphOps.ClearDataAsync(groupIds, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -426,6 +411,13 @@ public sealed partial class Graphiti : IAsyncDisposable
             CancellationToken cancellationToken = default)
     {
         Validation.ValidateGroupIds(groupIds);
+
+        // graphiti-net: a write like the others, so it cannot save summaries of text a concurrent strict removal is
+        // erasing. Without group ids, the groups that hold entities now are locked.
+        var lockedGroups = groupIds
+                           ?? await Driver.GraphOps.GetEntityGroupIdsAsync(cancellationToken).ConfigureAwait(false);
+        await using var groupLocks = await AcquireGroupLocksAsync(lockedGroups, cancellationToken)
+            .ConfigureAwait(false);
         using var scope = BeginOperation("build_communities", groupIds is { Count: 1 } ? groupIds[0] : null);
 
         await CommunityOperations.RemoveCommunitiesAsync(Driver, groupIds, cancellationToken).ConfigureAwait(false);
@@ -478,6 +470,13 @@ public sealed partial class Graphiti : IAsyncDisposable
     /// <exception cref="NodeNotFoundException">No saga has this id.</exception>
     public async Task<SagaNode> SummarizeSagaAsync(string sagaId, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(sagaId);
+        var found = await Driver.SagaNodeOps.GetByUuidAsync(sagaId, cancellationToken).ConfigureAwait(false);
+
+        // graphiti-net: hold the group's lock, so a concurrent episode cannot lose its saga pointers to this save,
+        // and a strict removal cannot be undone by a summary of the removed episode. Read again under the lock.
+        await using var groupLock = await GroupLock.AcquireAsync(found.GroupId, cancellationToken)
+            .ConfigureAwait(false);
         var saga = await Driver.SagaNodeOps.GetByUuidAsync(sagaId, cancellationToken).ConfigureAwait(false);
         using var scope = BeginOperation("summarize_saga", saga.GroupId);
 
@@ -735,6 +734,28 @@ public sealed partial class Graphiti : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    // Takes the locks of several groups in a fixed order, so two calls over overlapping groups cannot deadlock.
+    private async Task<IAsyncDisposable> AcquireGroupLocksAsync(
+        IEnumerable<string> groupIds,
+        CancellationToken cancellationToken)
+    {
+        var held = new HeldGroupLocks();
+        try
+        {
+            foreach (var groupId in groupIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+            {
+                held.Add(await GroupLock.AcquireAsync(groupId, cancellationToken).ConfigureAwait(false));
+            }
+
+            return held;
+        }
+        catch
+        {
+            await held.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private IDisposable BeginOperation(
         string operation,
         string? groupId,
@@ -776,6 +797,24 @@ public sealed partial class Graphiti : IAsyncDisposable
     }
 
     private static double ElapsedMilliseconds(long start) => Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+}
+
+/// <summary>Group locks held together, released in reverse order.</summary>
+internal sealed class HeldGroupLocks : IAsyncDisposable
+{
+    private readonly List<IAsyncDisposable> _held = [];
+
+    public void Add(IAsyncDisposable handle) => _held.Add(handle);
+
+    public async ValueTask DisposeAsync()
+    {
+        for (var i = _held.Count - 1; i >= 0; i--)
+        {
+            await _held[i].DisposeAsync().ConfigureAwait(false);
+        }
+
+        _held.Clear();
+    }
 }
 
 /// <summary>One saga episode as saga summarisation sees it (upstream's <c>(content, valid_at, created_at)</c>

@@ -6,7 +6,8 @@ namespace GraphitiNet;
 /// <summary>
 /// Serialises writes to one group. <see cref="Graphiti"/> holds a group's lock for the whole of
 /// <see cref="Graphiti.AddEpisodeAsync"/>, <see cref="Graphiti.AddEpisodeBulkAsync"/>,
-/// <see cref="Graphiti.AddTripletAsync"/>, <see cref="Graphiti.RemoveEpisodeAsync"/> and
+/// <see cref="Graphiti.AddTripletAsync"/>, <see cref="Graphiti.RemoveEpisodeAsync"/>,
+/// <see cref="Graphiti.SummarizeSagaAsync"/>, <see cref="Graphiti.BuildCommunitiesAsync"/> and
 /// <see cref="Graphiti.ClearDataAsync"/>, so two episodes added to one group at once cannot both create the same
 /// entity unseen by each other's deduplication. A graphiti-net addition: upstream leaves ordering to the caller
 /// (its MCP server queues episodes per group).

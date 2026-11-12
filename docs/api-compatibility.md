@@ -293,7 +293,9 @@ foreach (var node in nodeResults.Nodes)
 - **`add_episode(update_communities=True)`.** Upstream unpacks the per-entity results into two names, which fails
   unless exactly two entities were extracted. graphiti-net returns every updated community and new membership edge.
 - **Reprocessing by `uuid`.** Upstream includes the episode itself among its previous episodes when it is already
-  stored; graphiti-net leaves it out.
+  stored; graphiti-net leaves it out. graphiti-net also processes a stored episode in its own group: `groupId` may be
+  omitted, and naming another group (in `AddEpisodeAsync` or a `RawEpisode.Uuid` in `AddEpisodeBulkAsync`) throws
+  `ArgumentException`, where upstream would read the other group's episodes as context and write facts to it.
 - **`add_triplet` id clash.** Ids are immutable, so the new fact is a copy with a new id (see [Records](#records)).
 - **Label propagation.** Upstream loops forever when two entities joined by two or more facts swap communities each
   round; graphiti-net stops when an assignment repeats.
@@ -315,8 +317,9 @@ These are opt-in or additive; with the defaults, behaviour matches upstream exce
 
 ### One write at a time per group (`IGroupLock`)
 
-`AddEpisodeAsync`, `AddEpisodeBulkAsync`, `AddTripletAsync`, `RemoveEpisodeAsync` and `ClearDataAsync` hold the
-group's lock for the whole call, so two episodes added to one group at once cannot both create the same entity. The
+`AddEpisodeAsync`, `AddEpisodeBulkAsync`, `AddTripletAsync`, `RemoveEpisodeAsync`, `SummarizeSagaAsync`,
+`BuildCommunitiesAsync` and `ClearDataAsync` hold the group's lock (or the locks of every group they touch) for the
+whole call, so two episodes added to one group at once cannot both create the same entity. The
 default `InProcessGroupLock.Shared` works within one process (shared by every `Graphiti` instance in it). Pass your own
 `IGroupLock` (`ValueTask<IAsyncDisposable> AcquireAsync(string groupId, CancellationToken)`) for a distributed lock
 when several servers write to one database, or `NoGroupLock.Instance` for upstream's behaviour.
