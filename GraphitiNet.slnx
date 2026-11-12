@@ -12,4 +12,7 @@
   <Folder Name="/tools/">
     <Project Path="tools/GraphitiNet.Eval/GraphitiNet.Eval.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Quickstart/Quickstart.csproj" />
+  </Folder>
 </Solution>

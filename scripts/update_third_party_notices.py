@@ -1,6 +1,7 @@
 # Copyright 2026, graphiti-net contributors
 # Licensed under the Apache License, Version 2.0. See LICENSE.
-"""Rebuild the translated-files table in THIRD-PARTY-NOTICES.md from the "Ported from" headers in src/ and tests/.
+"""Rebuild the translated-files table in THIRD-PARTY-NOTICES.md from the "Ported from" headers in src/, tests/
+and samples/.
 
 Run from the repository root: python3 scripts/update_third_party_notices.py
 """
@@ -29,7 +30,7 @@ def sources(text: str) -> str:
 
 def main() -> None:
     rows = []
-    for path in sorted([*ROOT.glob('src/**/*.cs'), *ROOT.glob('tests/**/*.cs')]):
+    for path in sorted([*ROOT.glob('src/**/*.cs'), *ROOT.glob('tests/**/*.cs'), *ROOT.glob('samples/**/*.cs')]):
         if '/obj/' in path.as_posix() or '/bin/' in path.as_posix():
             continue
         found = sources(path.read_text(encoding='utf-8')[:2000])
