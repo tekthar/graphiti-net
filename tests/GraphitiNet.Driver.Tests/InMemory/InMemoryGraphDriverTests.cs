@@ -237,6 +237,29 @@ public class InMemoryGraphDriverTests
     }
 
     [Fact]
+    public async Task A_failed_save_keeps_the_previous_file()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"graphiti-net-{Guid.NewGuid():N}.json");
+        try
+        {
+            await new InMemoryGraphDriver().SaveToFileAsync(path);
+            var previous = await File.ReadAllTextAsync(path);
+
+            using var cancellation = new CancellationTokenSource();
+            await cancellation.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                new InMemoryGraphDriver().SaveToFileAsync(path, cancellation.Token));
+
+            Assert.Equal(previous, await File.ReadAllTextAsync(path));
+            Assert.False(File.Exists(path + ".tmp"));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task Loading_rejects_an_unknown_file_version()
     {
         using var stream = new MemoryStream("{\"Version\": 99}"u8.ToArray());

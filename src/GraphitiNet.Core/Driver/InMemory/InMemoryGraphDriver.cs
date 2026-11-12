@@ -138,13 +138,27 @@ public sealed class InMemoryGraphDriver : IGraphDriver
         await JsonSerializer.SerializeAsync(stream, snapshot, SnapshotOptions, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Writes the whole graph, embeddings included, to a JSON file, replacing it if it exists.</summary>
+    /// <summary>Writes the whole graph, embeddings included, to a JSON file, replacing it if it exists. The file is
+    /// written next to <paramref name="path"/> first and then moved over it, so a failed or cancelled save leaves the
+    /// previous file intact.</summary>
     public async Task SaveToFileAsync(string path, CancellationToken cancellationToken = default)
     {
-        var stream = File.Create(path);
-        await using (stream.ConfigureAwait(false))
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        var temporary = path + ".tmp";
+        try
         {
-            await SaveAsync(stream, cancellationToken).ConfigureAwait(false);
+            var stream = File.Create(temporary);
+            await using (stream.ConfigureAwait(false))
+            {
+                await SaveAsync(stream, cancellationToken).ConfigureAwait(false);
+            }
+
+            File.Move(temporary, path, overwrite: true);
+        }
+        catch
+        {
+            File.Delete(temporary);
+            throw;
         }
     }
 
