@@ -38,7 +38,23 @@ and the sanity check alongside.
 rate that conversation lower than the others, but a larger run should check whether extraction is systematically
 leaner.
 
+## Larger run: 5 conversations × 20 messages (100 messages)
+
+Same method and models, commit `c1ed7b3` (with the differential-test fixes).
+
+| Candidate | Score | Facts | Entities | Time | Input / output tokens |
+| --- | --- | --- | --- | --- | --- |
+| Python Graphiti, second run (control) | 0.450 | 438 | 537 | 288 s | 1,547,273 / 75,362 |
+| **graphiti-net** | **0.390** | 427 | 519 | 252 s | 1,534,094 / 72,551 |
+
+The baseline run produced 417 facts and 524 entities in 268 s, with 1,528,826 input and 72,051 output tokens.
+
+Per conversation, graphiti-net's fact counts (61, 95, 97, 96, 78) sit between or beside the two upstream runs' (63/70,
+97/102, 89/113, 105/99, 63/54). The score gap to the control, 0.06, is 6 messages out of 100, within the noise: each
+score's standard error is about 0.05. graphiti-net was the fastest of the three runs. The leaner extraction noticed
+in the first run did not recur.
+
 ## Caveats
 
-36 messages is a small sample, and each score moves by about 0.03 per message. Repeat with more conversations before
-a release, and on PostgreSQL as well as in memory.
+The first run's 36 messages move each score by about 0.03 per message; the larger run's 100 by 0.01. Repeat on
+PostgreSQL as well as in memory before a release.
