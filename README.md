@@ -45,14 +45,14 @@ The port is correct when it gives the same results as Python Graphiti on the sam
 
 ## Upstream version
 
-The port follows one tagged Graphiti release at a time and records which one. The baseline is not pinned yet. The
-latest release when this repository was created is
+The port follows one tagged Graphiti release at a time and records which one. The baseline is
 [v0.31.2](https://github.com/getzep/graphiti/releases/tag/v0.31.2).
 
 ## Documentation
 
 - [Requirements](docs/requirements.md): data model, ingestion pipeline, temporal model, search, storage, providers
   and verification.
+- [Roadmap](docs/roadmap.md): the phases of the port and the first pull requests.
 - [Development environment](docs/development.md): services, settings and the Claude Code cloud environment.
 
 ## Contributing

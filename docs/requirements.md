@@ -196,8 +196,8 @@ Both upstream servers have no authentication, authorisation or prompt-injection 
   and are listed in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md), as the Apache License requires.
 - **Naming:** package IDs, namespaces and docs must not suggest an official Zep product.
 
-Open question: which upstream release to pin as the baseline. The latest release when this repository was created is
-[v0.31.2](https://github.com/getzep/graphiti/releases/tag/v0.31.2) (October 2026).
+Baseline: the port follows [v0.31.2](https://github.com/getzep/graphiti/releases/tag/v0.31.2) (October 2026). The
+plan for getting there is in [roadmap.md](roadmap.md).
 
 ## Verification and benchmarks
 
