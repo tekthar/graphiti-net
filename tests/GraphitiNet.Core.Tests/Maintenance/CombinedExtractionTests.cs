@@ -236,6 +236,23 @@ public class CombinedExtractionTests
     }
 
     [Fact]
+    public async Task A_refused_timestamp_batch_is_not_swallowed()
+    {
+        // The base LLMClient asks the gate; the usual fake overrides GenerateResponseAsync and would not.
+        var response = System.Text.Json.JsonSerializer.Serialize(
+            Response([Entity("Alice"), Entity("Bob")], Fact("Alice", "Bob", "KNOWS", "Alice knows Bob.")));
+        var llm = new GraphitiNet.Tests.GraphitiApi.ScriptedLlmClient(response);
+        var clients = MakeClients().Clients with { LlmClient = llm };
+        var gate = new DelegateModelCallGate((call, _) => ValueTask.FromResult(call.PromptName != Timestamps));
+        using var scope = GraphitiCallContext.Begin(
+            new GraphitiCallContext { Operation = "add_episode_bulk", ModelCallGate = gate });
+
+        await Assert.ThrowsAsync<ModelCallRefusedException>(() =>
+            CombinedExtractionOperations.ExtractNodesAndEdgesAsync(clients, MakeEpisode(), NoEpisodes));
+        Assert.Single(llm.Calls);
+    }
+
+    [Fact]
     public async Task A_null_batch_answer_does_not_retry()
     {
         var (clients, llm) = MakeClients();

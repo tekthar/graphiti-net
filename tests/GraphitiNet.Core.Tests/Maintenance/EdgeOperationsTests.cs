@@ -918,6 +918,21 @@ public class EdgeOperationsTests
     }
 
     [Fact]
+    public async Task ExtractEdgeTimestamps_DoesNotSwallowAModelCallRefusal()
+    {
+        // The base LLMClient asks the gate; the usual fake overrides GenerateResponseAsync and would not.
+        var llm = new GraphitiNet.Tests.GraphitiApi.ScriptedLlmClient("""{"valid_at": null, "invalid_at": null}""");
+        var clients = Clients().Clients with { LlmClient = llm };
+        var gate = new DelegateModelCallGate((_, _) => ValueTask.FromResult(false));
+        using var scope = GraphitiCallContext.Begin(
+            new GraphitiCallContext { Operation = "add_episode", ModelCallGate = gate });
+
+        await Assert.ThrowsAsync<ModelCallRefusedException>(() =>
+            EdgeOperations.ExtractEdgeTimestampsAsync(clients, Edge("a", "b", "fact"), Episode()));
+        Assert.Empty(llm.Calls);
+    }
+
+    [Fact]
     public async Task ResolveExtractedEdges_InvalidatesContradictedFactsAndRecordsWhoDidIt()
     {
         var (clients, llm, driver, _) = Clients();

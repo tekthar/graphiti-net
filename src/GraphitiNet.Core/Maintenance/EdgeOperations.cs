@@ -1145,7 +1145,8 @@ public static partial class EdgeOperations
     /// <summary>
     /// Extracts <c>valid_at</c> / <c>invalid_at</c> for a fact with one small LLM call (upstream
     /// <c>_extract_edge_timestamps</c>). Modifies the fact in place. Skipped when the fact already has a timestamp or
-    /// there is no reference time (the fact's, else the episode's). A failed call is logged and ignored.
+    /// there is no reference time (the fact's, else the episode's). A failed call is logged and ignored; a call the
+    /// model call gate refuses is not (<see cref="ModelCallRefusedException"/>).
     /// </summary>
     internal static async Task ExtractEdgeTimestampsAsync(
         GraphitiClients clients,
@@ -1178,7 +1179,7 @@ public static partial class EdgeOperations
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             TemporalEdgeUtils.ApplyExtractedTimestamps(edge, timestamps.ValidAt, timestamps.InvalidAt, reference);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not (OperationCanceledException or ModelCallRefusedException))
         {
             Log.TimestampExtractionFailed(clients.LlmClient.Logger, e, edge.Uuid);
         }

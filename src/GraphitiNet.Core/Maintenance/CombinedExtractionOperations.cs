@@ -406,7 +406,7 @@ public static partial class CombinedExtractionOperations
                     modelSize: ModelSize.Small,
                     cancellationToken: cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception e) when (e is not OperationCanceledException)
+            catch (Exception e) when (e is not (OperationCanceledException or ModelCallRefusedException))
             {
                 Log.TimestampBatchFailed(clients.Logger, e, group.Length, attempt, TimestampBatchAttempts);
             }
