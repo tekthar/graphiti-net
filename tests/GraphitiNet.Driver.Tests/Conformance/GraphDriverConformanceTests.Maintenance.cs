@@ -228,7 +228,7 @@ public abstract partial class GraphDriverConformanceTests
     }
 
     [Fact]
-    public async Task Neighbor_communities_appear_once_per_neighbouring_member()
+    public async Task Neighbor_communities_appear_once_per_fact_and_membership()
     {
         var group = NewGroup();
         var x = Entity(group, "X");
@@ -238,7 +238,8 @@ public abstract partial class GraphDriverConformanceTests
         var far = Entity(group, "far");
         await Save(x, a, b, c, far);
 
-        // A is joined to X twice, in both directions; it still counts once.
+        // A is joined to X by two facts, so its community counts twice, as upstream's
+        // MATCH (c:Community)-[:HAS_MEMBER]->(m:Entity)-[:RELATES_TO]-(n:Entity {uuid: $entity_uuid}).
         await Save(Fact(group, x, a), Fact(group, a, x), Fact(group, b, x), Fact(group, x, c), Fact(group, c, far));
         var c1 = Community(group, "c1");
         var c2 = Community(group, "c2");
@@ -249,7 +250,7 @@ public abstract partial class GraphDriverConformanceTests
         var communities = await Driver.GraphOps.GetNeighborCommunitiesAsync(x.Uuid);
 
         Assert.Equal(
-            new[] { c1.Uuid, c1.Uuid, c2.Uuid }.Order(StringComparer.Ordinal),
+            new[] { c1.Uuid, c1.Uuid, c1.Uuid, c2.Uuid }.Order(StringComparer.Ordinal),
             communities.Select(n => n.Uuid).Order(StringComparer.Ordinal));
         AssertCommunity(c2, communities.First(n => n.Uuid == c2.Uuid));
         Assert.Empty(await Driver.GraphOps.GetNeighborCommunitiesAsync(Guid.NewGuid().ToString()));
@@ -266,12 +267,13 @@ public abstract partial class GraphDriverConformanceTests
         var b = Entity(group, "B");
         var c = Entity(group, "C");
         await Save(a, b, c);
-        await Save(Mention(group, e1, a), Mention(group, e2, a), Mention(group, e1, b));
+        // Every mention edge counts, as upstream's count(*), even two from the same episode.
+        await Save(Mention(group, e1, a), Mention(group, e2, a), Mention(group, e1, b), Mention(group, e1, a));
 
         var unknown = Guid.NewGuid().ToString();
         var counts = await Driver.GraphOps.CountEpisodeMentionsAsync([a.Uuid, b.Uuid, c.Uuid, unknown]);
 
-        Assert.Equal(2, counts[a.Uuid]);
+        Assert.Equal(3, counts[a.Uuid]);
         Assert.Equal(1, counts[b.Uuid]);
         Assert.Equal(0, counts[c.Uuid]);
         Assert.Equal(0, counts[unknown]);

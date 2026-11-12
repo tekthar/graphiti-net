@@ -55,7 +55,7 @@ public abstract partial class GraphDriverConformanceTests
     }
 
     [Fact]
-    public async Task Episode_fulltext_search_ranks_by_relevance_on_content_and_source_description()
+    public async Task Episode_fulltext_search_ranks_by_relevance_on_content_source_and_source_description()
     {
         var group = NewGroup();
         var both = Episode(group, "e1", "Meeting about the lighthouse budget and lighthouse repairs.", sourceDescription: "lighthouse minutes");
@@ -69,6 +69,11 @@ public abstract partial class GraphDriverConformanceTests
         AssertSameNodes([both, contentOnly, descriptionOnly], result);
         AssertEpisode(both, result[0]);
         AssertSameNodes([descriptionOnly, both], await Driver.SearchOps.EpisodeFulltextSearchAsync("lighthouse", NoFilter, [group]));
+
+        // As upstream, the source type is indexed too, by its stored name.
+        var json = Episode(group, "e5", "Nothing to see.", source: EpisodeType.Json, sourceDescription: "api");
+        await Save(json);
+        AssertSameNodes([json], await Driver.SearchOps.EpisodeFulltextSearchAsync("json", NoFilter, [group]));
     }
 
     [Fact]
@@ -183,10 +188,10 @@ public abstract partial class GraphDriverConformanceTests
             Ids([exact, close]),
             Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], limit: 2, minScore: 0)));
 
-        // The minimum is inclusive.
+        // The minimum is exclusive, as upstream (score > min_score): the orthogonal vector scores exactly 0.
         Assert.Equal(
-            Ids([exact]),
-            Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 1.0)));
+            Ids([exact, close, far]),
+            Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 0)));
 
         // The default minimum score is 0.6. Cosine ignores length.
         Assert.Equal(
@@ -289,7 +294,9 @@ public abstract partial class GraphDriverConformanceTests
     // ---------------------------------------------------------------- breadth-first
 
     /// <summary>
-    /// A -f1-> B -f2-> C -f3-> D, E -f4-> A, episode P mentions A, and F stands alone. B is a Person.
+    /// A -f1-> B -f2-> C -f3-> D, E -f4-> A, episode P mentions A, and F stands alone. B and D are Persons.
+    /// Breadth-first search follows facts from source to target only, as upstream's
+    /// <c>(origin)-[:RELATES_TO|MENTIONS*1..depth]-&gt;(n:Entity)</c>.
     /// </summary>
     private async Task<BfsGraph> SaveBfsGraph()
     {
@@ -327,17 +334,21 @@ public abstract partial class GraphDriverConformanceTests
         EpisodicNode P);
 
     [Fact]
-    public async Task Node_bfs_follows_facts_in_both_directions_up_to_the_depth()
+    public async Task Node_bfs_follows_facts_from_source_to_target_up_to_the_depth()
     {
         var g = await SaveBfsGraph();
         Task<IReadOnlyList<EntityNode>> Bfs(int depth, params string[] origins) =>
             Driver.SearchOps.NodeBfsSearchAsync(origins, NoFilter, depth, [g.Group], limit: 100);
 
-        AssertSameNodes([g.B, g.E], await Bfs(1, g.A.Uuid));
-        AssertSameNodes([g.B, g.E, g.C], await Bfs(2, g.A.Uuid));
-        AssertSameNodes([g.B, g.E, g.C, g.D], await Bfs(3, g.A.Uuid));
-        AssertSameNodes([g.C], await Bfs(1, g.D.Uuid));
-        AssertSameNodes([g.C, g.A], await Bfs(1, g.B.Uuid, g.D.Uuid));
+        AssertSameNodes([g.B], await Bfs(1, g.A.Uuid));
+        AssertSameNodes([g.B, g.C], await Bfs(2, g.A.Uuid));
+        AssertSameNodes([g.B, g.C, g.D], await Bfs(3, g.A.Uuid));
+        AssertSameNodes([g.B, g.C, g.D], await Bfs(5, g.A.Uuid));
+        AssertSameNodes([g.A, g.B], await Bfs(2, g.E.Uuid));
+
+        // Facts are never followed backwards: D has only an incoming fact.
+        Assert.Empty(await Bfs(3, g.D.Uuid));
+        AssertSameNodes([g.C, g.B], await Bfs(1, g.B.Uuid, g.D.Uuid, g.A.Uuid));
         Assert.Empty(await Bfs(3, g.F.Uuid));
         Assert.Empty(await Bfs(0, g.A.Uuid));
         Assert.Empty(await Bfs(2));
@@ -349,21 +360,40 @@ public abstract partial class GraphDriverConformanceTests
     }
 
     [Fact]
+    public async Task Node_bfs_returns_the_origin_only_through_a_cycle()
+    {
+        var group = NewGroup();
+        var x = Entity(group, "X");
+        var y = Entity(group, "Y");
+        var z = Entity(group, "Z");
+        await Save(x, y, z);
+        await Save(Fact(group, x, y), Fact(group, y, x), Fact(group, y, z));
+
+        // X -> Y -> X is a path of two hops back to the origin.
+        AssertSameNodes([y], await Driver.SearchOps.NodeBfsSearchAsync([x.Uuid], NoFilter, 1, [group], limit: 100));
+        AssertSameNodes([y, x, z], await Driver.SearchOps.NodeBfsSearchAsync([x.Uuid], NoFilter, 2, [group], limit: 100));
+        AssertSameNodes([y], await Driver.SearchOps.NodeBfsSearchAsync([z.Uuid, x.Uuid], NoFilter, 1, [group], limit: 100));
+    }
+
+    [Fact]
     public async Task Node_bfs_starts_from_episodes_through_their_mentions()
     {
         var g = await SaveBfsGraph();
         Task<IReadOnlyList<EntityNode>> Bfs(int depth) =>
             Driver.SearchOps.NodeBfsSearchAsync([g.P.Uuid], NoFilter, depth, [g.Group], limit: 100);
 
+        // The mention is the first hop.
         AssertSameNodes([g.A], await Bfs(1));
-        AssertSameNodes([g.A, g.B, g.E], await Bfs(2));
-        AssertSameNodes([g.A, g.B, g.E, g.C], await Bfs(3));
+        AssertSameNodes([g.A, g.B], await Bfs(2));
+        AssertSameNodes([g.A, g.B, g.C], await Bfs(3));
 
         // Mentions are followed only from the episode to the entity, never back.
         var other = Episode(g.Group, "other");
         await Save(other);
-        await Save(Mention(g.Group, other, g.F));
-        AssertSameNodes([g.F], await Driver.SearchOps.NodeBfsSearchAsync([other.Uuid], NoFilter, 3, [g.Group], limit: 100));
+        await Save(Mention(g.Group, other, g.F), Mention(g.Group, other, g.D));
+        AssertSameNodes(
+            [g.F, g.D],
+            await Driver.SearchOps.NodeBfsSearchAsync([other.Uuid], NoFilter, 3, [g.Group], limit: 100));
     }
 
     [Fact]
@@ -374,18 +404,20 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.SearchOps.NodeBfsSearchAsync([g.A.Uuid], NoFilter, 3, [NewGroup()], limit: 100));
         Assert.Empty(await Driver.SearchOps.NodeBfsSearchAsync([g.A.Uuid], NoFilter, 3, [], limit: 100));
         AssertSameNodes(
-            [g.B, g.E, g.C, g.D],
+            [g.B, g.C, g.D],
             await Driver.SearchOps.NodeBfsSearchAsync([g.A.Uuid], NoFilter, 3, null, limit: 100));
         AssertSameNodes(
             [g.B, g.D],
             await Driver.SearchOps.NodeBfsSearchAsync(
                 [g.A.Uuid], new SearchFilters { NodeLabels = ["Person"] }, 3, [g.Group], limit: 100));
 
-        // Entities in another group are not returned, even when joined by a fact.
-        var stranger = Entity(NewGroup(), "Stranger");
+        // Entities in another group than the origin are not returned, even when joined by a fact.
+        var strangerGroup = NewGroup();
+        var stranger = Entity(strangerGroup, "Stranger");
         await Save(stranger);
         await Save(Fact(g.Group, g.A, stranger));
-        AssertSameNodes([g.B, g.E], await Driver.SearchOps.NodeBfsSearchAsync([g.A.Uuid], NoFilter, 1, null, limit: 100));
+        AssertSameNodes([g.B], await Driver.SearchOps.NodeBfsSearchAsync([g.A.Uuid], NoFilter, 1, null, limit: 100));
+        Assert.Empty(await Driver.SearchOps.NodeBfsSearchAsync([g.A.Uuid], NoFilter, 1, [strangerGroup], limit: 100));
     }
 
     [Fact]
@@ -395,19 +427,23 @@ public abstract partial class GraphDriverConformanceTests
         Task<IReadOnlyList<EntityEdge>> Bfs(int depth, params string[] origins) =>
             Driver.SearchOps.EdgeBfsSearchAsync(origins, depth, NoFilter, [g.Group], limit: 100);
 
-        AssertSameEdges([g.F1, g.F4], await Bfs(1, g.A.Uuid));
-        AssertSameEdges([g.F1, g.F4, g.F2], await Bfs(2, g.A.Uuid));
-        AssertSameEdges([g.F1, g.F4, g.F2, g.F3], await Bfs(3, g.A.Uuid));
-        AssertSameEdges([g.F3], await Bfs(1, g.D.Uuid));
-        AssertSameEdges([g.F3, g.F1, g.F2], await Bfs(1, g.D.Uuid, g.B.Uuid));
+        AssertSameEdges([g.F1], await Bfs(1, g.A.Uuid));
+        AssertSameEdges([g.F1, g.F2], await Bfs(2, g.A.Uuid));
+        AssertSameEdges([g.F1, g.F2, g.F3], await Bfs(3, g.A.Uuid));
+        AssertSameEdges([g.F4, g.F1], await Bfs(2, g.E.Uuid));
+        AssertSameEdges([g.F2, g.F3], await Bfs(2, g.B.Uuid));
+
+        // Facts are never followed backwards.
+        Assert.Empty(await Bfs(3, g.D.Uuid));
+        AssertSameEdges([g.F2, g.F3], await Bfs(1, g.D.Uuid, g.B.Uuid, g.C.Uuid));
         Assert.Empty(await Bfs(3, g.F.Uuid));
         Assert.Empty(await Bfs(0, g.A.Uuid));
         Assert.Empty(await Bfs(2));
 
         // From an episode, the mention is the first hop.
         Assert.Empty(await Bfs(1, g.P.Uuid));
-        AssertSameEdges([g.F1, g.F4], await Bfs(2, g.P.Uuid));
-        AssertSameEdges([g.F1, g.F4, g.F2], await Bfs(3, g.P.Uuid));
+        AssertSameEdges([g.F1], await Bfs(2, g.P.Uuid));
+        AssertSameEdges([g.F1, g.F2], await Bfs(3, g.P.Uuid));
 
         var found = await Bfs(1, g.A.Uuid);
         AssertFact(g.F1, found.Single(e => e.Uuid == g.F1.Uuid));
@@ -415,8 +451,18 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.SearchOps.EdgeBfsSearchAsync([g.A.Uuid], 3, NoFilter, [NewGroup()], limit: 100));
         Assert.Empty(await Driver.SearchOps.EdgeBfsSearchAsync([g.A.Uuid], 3, NoFilter, [], limit: 100));
         AssertSameEdges(
-            [g.F1, g.F4, g.F2, g.F3],
+            [g.F1, g.F2, g.F3],
             await Driver.SearchOps.EdgeBfsSearchAsync([g.A.Uuid], 3, NoFilter, null, limit: 100));
+
+        // Group ids restrict the facts, not the origin.
+        var otherGroup = NewGroup();
+        var stranger = Entity(otherGroup, "Stranger");
+        await Save(stranger);
+        var crossing = Fact(otherGroup, g.D, stranger);
+        await Save(crossing);
+        AssertSameEdges(
+            [crossing],
+            await Driver.SearchOps.EdgeBfsSearchAsync([g.C.Uuid], 2, NoFilter, [otherGroup], limit: 100));
     }
 
     // ---------------------------------------------------------------- connected nodes

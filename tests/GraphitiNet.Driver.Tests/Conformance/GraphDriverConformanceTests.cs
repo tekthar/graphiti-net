@@ -297,7 +297,9 @@ public abstract partial class GraphDriverConformanceTests : IAsyncLifetime
         Assert.Equal(expected.Uuid, actual.Uuid);
         Assert.Equal(expected.Name, actual.Name);
         Assert.Equal(expected.GroupId, actual.GroupId);
-        AssertSameSet(expected.Labels, actual.Labels);
+
+        // Every entity carries the Entity label, as upstream.
+        AssertSameSet(expected.Labels.Append("Entity").Distinct(StringComparer.Ordinal), actual.Labels);
         AssertUtc(expected.CreatedAt, actual.CreatedAt);
         Assert.Equal(expected.Summary, actual.Summary);
         Assert.Null(actual.NameEmbedding);

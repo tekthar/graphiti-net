@@ -225,8 +225,10 @@ internal sealed class InMemoryEpisodeNodeOperations(InMemoryStore store)
                 IEnumerable<EpisodicNode> episodes = Store.Episodes.Values;
                 if (saga is not null)
                 {
+                    // As upstream: the saga is looked up in the first group only, so no group ids find nothing.
+                    var sagaGroup = groupIds is { Count: > 0 } ? groupIds[0] : null;
                     var sagaUuids = Store.Sagas.Values
-                        .Where(s => s.Name == saga && (groups is null || groups.Contains(s.GroupId)))
+                        .Where(s => s.Name == saga && s.GroupId == sagaGroup)
                         .Select(s => s.Uuid)
                         .ToHashSet(StringComparer.Ordinal);
                     var episodeUuids = Store.HasEpisodeEdges.Values
@@ -238,7 +240,7 @@ internal sealed class InMemoryEpisodeNodeOperations(InMemoryStore store)
 
                 var latest = episodes
                     .Where(e => e.ValidAt <= referenceTime)
-                    .Where(e => groups is null || groups.Contains(e.GroupId))
+                    .Where(e => saga is not null || groups is null || groups.Contains(e.GroupId))
                     .Where(e => source is null || e.Source == source)
                     .OrderByDescending(e => e.ValidAt)
                     .ThenByDescending(e => e.CreatedAt)

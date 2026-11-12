@@ -59,7 +59,8 @@ public abstract partial class GraphDriverConformanceTests
         EntityEdge F4,
         float[] Embedding);
 
-    /// <summary>Asserts full-text, similarity and breadth-first fact search all return exactly
+    /// <summary>Asserts full-text, similarity and breadth-first fact search (from the hub and X3, which between
+    /// them start every fact) all return exactly
     /// <paramref name="expected"/> under <paramref name="filters"/>.</summary>
     private async Task AssertEdgeFilter(FilterGraph g, SearchFilters filters, params EntityEdge[] expected)
     {
@@ -71,7 +72,7 @@ public abstract partial class GraphDriverConformanceTests
             await Driver.SearchOps.EdgeSimilaritySearchAsync(g.Embedding, null, null, filters, [g.Group], limit: 100));
         AssertSameEdges(
             expected,
-            await Driver.SearchOps.EdgeBfsSearchAsync([g.Hub.Uuid], 1, filters, [g.Group], limit: 100));
+            await Driver.SearchOps.EdgeBfsSearchAsync([g.Hub.Uuid, g.X3.Uuid], 1, filters, [g.Group], limit: 100));
     }
 
     private static DateFilter On(ComparisonOperator op, DateTimeOffset? date = null) =>

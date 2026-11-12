@@ -420,7 +420,7 @@ public abstract partial class GraphDriverConformanceTests
         var loaded = await Driver.EntityNodeOps.GetByUuidAsync(node.Uuid);
         AssertEntity(node, loaded);
         Assert.Empty(loaded.Attributes);
-        Assert.Empty(loaded.Labels);
+        Assert.Equal(["Entity"], loaded.Labels);
     }
 
     [Fact]

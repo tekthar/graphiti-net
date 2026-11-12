@@ -83,10 +83,9 @@ internal sealed class InMemorySearchOperations(InMemoryStore store) : ISearchOpe
                         continue;
                     }
 
-                    foreach (var (uuid, depth) in Distances(adjacency, origin, maxDepth))
+                    foreach (var (uuid, depth) in Reach(adjacency, origin, maxDepth))
                     {
-                        if (depth == 0
-                            || !store.Entities.TryGetValue(uuid, out var node)
+                        if (!store.Entities.TryGetValue(uuid, out var node)
                             || node.GroupId != originGroup
                             || !FilterEvaluator.InGroups(groupIds, node.GroupId)
                             || !FilterEvaluator.MatchesNode(searchFilter, node))
@@ -220,13 +219,14 @@ internal sealed class InMemorySearchOperations(InMemoryStore store) : ISearchOpe
         IReadOnlyList<string>? groupIds = null,
         int limit = SearchDefaults.RelevantSchemaLimit,
         CancellationToken cancellationToken = default) =>
-        // As upstream, episode search takes the filter but does not apply it.
+        // As upstream, episode search indexes content, source and source description, and takes the filter but does
+        // not apply it.
         Read<IReadOnlyList<EpisodicNode>>(
             () => Bm25.Search(
                     query,
                     store.Episodes.Values,
                     e => e.Uuid,
-                    e => [e.Content, e.SourceDescription],
+                    e => [e.Content, e.Source.ToStorageName(), e.SourceDescription],
                     e => FilterEvaluator.InGroups(groupIds, e.GroupId),
                     limit)
                 .Select(RecordCopies.Copy)
@@ -334,7 +334,7 @@ internal sealed class InMemorySearchOperations(InMemoryStore store) : ISearchOpe
 
         return items
             .Select(item => (Item: item, Score: embeddingOf(item) is { } embedding ? Cosine(searchVector, embedding) : null))
-            .Where(x => x.Score is { } score && score >= minScore)
+            .Where(x => x.Score is { } score && score > minScore)
             .OrderByDescending(x => x.Score)
             .ThenBy(x => uuidOf(x.Item), StringComparer.Ordinal)
             .Take(limit)
@@ -350,7 +350,8 @@ internal sealed class InMemorySearchOperations(InMemoryStore store) : ISearchOpe
             store.Entities.GetValueOrDefault(edge.TargetNodeUuid));
 
     /// <summary>
-    /// The traversal graph: facts in both directions, and episode-to-entity links from the episode only.
+    /// The traversal graph: facts from source to target, and episode-to-entity links from the episode, as upstream's
+    /// <c>-[:RELATES_TO|MENTIONS*1..depth]-&gt;</c>.
     /// <see cref="Step.EdgeUuid"/> is set for facts.
     /// </summary>
     private Dictionary<string, List<Step>> BuildAdjacency()
@@ -375,7 +376,6 @@ internal sealed class InMemorySearchOperations(InMemoryStore store) : ISearchOpe
             }
 
             Add(edge.SourceNodeUuid, new Step(edge.TargetNodeUuid, edge.Uuid));
-            Add(edge.TargetNodeUuid, new Step(edge.SourceNodeUuid, edge.Uuid));
         }
 
         foreach (var edge in store.EpisodicEdges.Values)
@@ -417,6 +417,38 @@ internal sealed class InMemorySearchOperations(InMemoryStore store) : ISearchOpe
         }
 
         return distances;
+    }
+
+    /// <summary>
+    /// The nodes at the end of a path of 1 to <paramref name="maxDepth"/> hops from <paramref name="origin"/>, with the
+    /// fewest hops. The origin itself is included only when a cycle leads back to it, as in Cypher.
+    /// </summary>
+    private static Dictionary<string, int> Reach(
+        Dictionary<string, List<Step>> adjacency,
+        string origin,
+        int maxDepth)
+    {
+        var reached = new Dictionary<string, int>(StringComparer.Ordinal);
+        var frontier = new Queue<(string Node, int Depth)>();
+        frontier.Enqueue((origin, 0));
+        while (frontier.Count > 0)
+        {
+            var (current, depth) = frontier.Dequeue();
+            if (depth >= maxDepth || !adjacency.TryGetValue(current, out var steps))
+            {
+                continue;
+            }
+
+            foreach (var step in steps)
+            {
+                if (reached.TryAdd(step.To, depth + 1))
+                {
+                    frontier.Enqueue((step.To, depth + 1));
+                }
+            }
+        }
+
+        return reached;
     }
 
     private Task<T> Read<T>(Func<T> read, CancellationToken cancellationToken)
