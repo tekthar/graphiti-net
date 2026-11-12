@@ -7,6 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="OpenAI" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="GraphitiNet.Core.Tests" />
   </ItemGroup>
 
