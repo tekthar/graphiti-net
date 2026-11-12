@@ -27,7 +27,13 @@ namespace GraphitiNet.Driver;
 /// before it (ordinal comparison), and <c>limit</c> caps the page.</item>
 /// <item>Deleting a node also deletes every edge that touches it (upstream's <c>DETACH DELETE</c>).</item>
 /// <item>Every timestamp is stored and returned in UTC.</item>
+/// <item>Labels round-trip as a set (order and duplicates are not kept); drivers neither add nor remove labels.</item>
+/// <item>Attribute and episode metadata values round-trip as JSON: what comes back serialises to the same JSON
+/// (strings, numbers, booleans, <see langword="null"/>, nested objects and lists).</item>
+/// <item>Edges are saved after their endpoints; what happens to an edge whose endpoint does not exist is up to the
+/// backend (upstream's Neo4j driver silently skips it).</item>
 /// </list>
+/// <para>See <c>docs/drivers.md</c> for the full rules and the conformance suite.</para>
 /// </remarks>
 public interface IGraphDriver : IAsyncDisposable
 {
@@ -135,9 +141,11 @@ public interface IEpisodeNodeOperations : INodeOperations<EpisodicNode>
     /// </summary>
     /// <param name="referenceTime">Only episodes valid at or before this time.</param>
     /// <param name="lastN">How many episodes.</param>
-    /// <param name="groupIds">Restrict to these groups, or all groups if <see langword="null"/>.</param>
+    /// <param name="groupIds">Restrict to these groups, or all groups if <see langword="null"/> or empty (as
+    /// upstream).</param>
     /// <param name="source">Restrict to one source type.</param>
-    /// <param name="saga">Restrict to episodes in the saga with this name.</param>
+    /// <param name="saga">Restrict to episodes in a saga with this name, in <paramref name="groupIds"/> if given.
+    /// Upstream applies it only when group ids are given, and then only in the first group.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     Task<IReadOnlyList<EpisodicNode>> RetrieveEpisodesAsync(
         DateTimeOffset referenceTime,
@@ -232,13 +240,26 @@ public interface INextEpisodeEdgeOperations : IRecordOperations<NextEpisodeEdge>
 /// <remarks>
 /// <para><b>Group ids:</b> <see langword="null"/> means every group; an empty list matches nothing.</para>
 /// <para><b>Full-text:</b> entity nodes match on name and summary; facts on name and fact text; episodes on content
-/// and source description; communities on name. Results are ordered by the backend's relevance score, best first.
-/// An empty or whitespace query returns nothing.</para>
+/// and source description; communities on name. A record matches when it contains any query term (Lucene's default
+/// OR), ignoring case and punctuation. Results are ordered by the backend's relevance score, best first. An empty or
+/// whitespace query returns nothing.</para>
 /// <para><b>Similarity:</b> cosine similarity against the stored embedding; only results scoring at least
-/// <c>minScore</c>, best first. Records with no embedding never match.</para>
+/// <c>minScore</c> (inclusive; upstream's Neo4j driver uses <c>&gt;</c>), best first. Records with no embedding never
+/// match. The source and target restriction of fact search applies with or without group ids.</para>
 /// <para><b>Breadth-first:</b> starting from the origin nodes (entity or episode ids), follow facts in both directions
-/// and episode-to-entity links outward, up to <c>maxDepth</c> hops (upstream caps it at 3).</para>
-/// <para>Every method applies <see cref="SearchFilters"/> where it takes one.</para>
+/// and episode-to-entity links outward, up to <c>maxDepth</c> hops (callers cap it at 3, upstream's
+/// <c>MAX_SEARCH_DEPTH</c>); <c>maxDepth</c> below 1 returns nothing. Entity search returns the entities 1 to
+/// <c>maxDepth</c> hops from an origin, in that origin's group, not counting the origin itself; group ids restrict both
+/// the origin and the result. Fact search returns the facts on those paths (an episode's link to an entity is the
+/// first hop); group ids restrict the facts. Result order is not specified.</para>
+/// <para><b>Filters:</b> entity searches apply <see cref="SearchFilters.NodeLabels"/> and
+/// <see cref="SearchFilters.PropertyFilters"/> (on <see cref="EntityNode.Attributes"/>) and ignore the fact-only
+/// fields. Fact searches apply every field: node labels to both endpoints, property filters to
+/// <see cref="EntityEdge.Attributes"/>. Episode full-text search takes a filter but does not apply it, as upstream.
+/// Every entity has the implicit label <c>Entity</c>. An empty list in a filter matches nothing. Comparisons with a
+/// missing value are false; only <see cref="ComparisonOperator.IsNull"/> matches it. Dates compare as instants;
+/// property values compare as numbers when both are numbers, as ordinal strings when both are strings, and never
+/// across types.</para>
 /// </remarks>
 public interface ISearchOperations
 {
@@ -332,7 +353,8 @@ public interface ISearchOperations
 /// <summary>Schema, clean-up and community helpers.</summary>
 public interface IGraphMaintenanceOperations
 {
-    /// <summary>Deletes every record in these groups, or in the whole graph if <see langword="null"/>.</summary>
+    /// <summary>Deletes every record (nodes, edges, and edges touching those nodes) in these groups, or in the whole
+    /// graph if <see langword="null"/>. An empty list deletes nothing.</summary>
     Task ClearDataAsync(IReadOnlyList<string>? groupIds = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -343,8 +365,9 @@ public interface IGraphMaintenanceOperations
 
     /// <summary>
     /// The entity neighbourhood used for community detection: for each entity in the group, its neighbouring entities
-    /// (joined by a fact in either direction) and how many facts join them. Every entity in the group appears as a
-    /// key, even with no neighbours. Core runs label propagation over it (upstream's <c>get_community_clusters</c>).
+    /// in the same group (joined by a fact in either direction) and how many facts join them. Every entity in the group
+    /// appears as a key, even with no neighbours. Core runs label propagation over it (upstream's
+    /// <c>get_community_clusters</c>).
     /// </summary>
     Task<IReadOnlyDictionary<string, IReadOnlyList<Neighbor>>> GetEntityProjectionAsync(
         string groupId,
@@ -376,7 +399,8 @@ public interface IGraphMaintenanceOperations
         string entityUuid,
         CancellationToken cancellationToken = default);
 
-    /// <summary>How many episodes mention each entity. Entities with no mentions map to 0.</summary>
+    /// <summary>How many distinct episodes mention each entity. Every requested id is a key; ids with no mentions
+    /// (or unknown ids) map to 0.</summary>
     Task<IReadOnlyDictionary<string, int>> CountEpisodeMentionsAsync(
         IReadOnlyList<string> entityUuids,
         CancellationToken cancellationToken = default);

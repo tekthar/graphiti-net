@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="GraphitiNet.Core.Tests" />
+    <InternalsVisibleTo Include="GraphitiNet.Driver.Tests" />
   </ItemGroup>
 
 </Project>

@@ -53,6 +53,7 @@ The port follows one tagged Graphiti release at a time and records which one. Th
 
 - [Requirements](docs/requirements.md): data model, ingestion pipeline, temporal model, search, storage, providers
   and verification.
+- [Graph drivers](docs/drivers.md): the storage contract, the in-memory driver, and how to add and test a driver.
 - [Roadmap](docs/roadmap.md): the phases of the port and the first pull requests.
 - [Development environment](docs/development.md): services, settings and the Claude Code cloud environment.
 
