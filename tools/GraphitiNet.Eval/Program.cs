@@ -7,6 +7,7 @@
 // baseline built by Python Graphiti.
 //
 // Usage: dotnet run --project tools/GraphitiNet.Eval -- <longmemeval_oracle.json> <out.json> <users> <messages>
+//   (or `qa ...` for the question-answering benchmark; see Qa.cs)
 //   Settings: LLM_MODEL, SMALL_LLM_MODEL, EMBEDDING_MODEL, EMBEDDING_DIM, OPENAI_API_KEY, and GRAPHITI_EVAL_POSTGRES
 //   (a connection string; the in-memory driver is used when it is not set).
 
@@ -21,6 +22,14 @@ using GraphitiNet.Driver.PostgreSql;
 using GraphitiNet.Embedder;
 using GraphitiNet.Llm;
 using GraphitiNet.Models;
+
+switch (args.FirstOrDefault())
+{
+    case "qa":
+        return await Qa.RunAsync(args[1..]);
+    case "qa-answer":
+        return await Qa.AnswerAgainAsync(args[1..]);
+}
 
 if (args.Length != 4)
 {

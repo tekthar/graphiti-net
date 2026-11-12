@@ -88,6 +88,27 @@ on LongMemEval conversations, using an LLM judge. `parity/python/lme_eval.py bui
 Graphiti, `tools/GraphitiNet.Eval` makes graphiti-net's, and `lme_eval.py judge` scores them. Results are in
 [results/](results/); always run a second upstream build as a control, since the judge must pick a side even between
 two runs of the same pipeline.
+
+## Question answering on LongMemEval (live models)
+
+`parity/python/lme_qa.py` and the `qa` command of `tools/GraphitiNet.Eval` run the same benchmark on each
+implementation: ingest each selected LongMemEval-oracle question's conversations message by message, search the
+question's group (`COMBINED_HYBRID_SEARCH_RRF`, facts and entities, 20 each), answer with upstream's
+`eval.qa_prompt` from the facts (with their valid and invalid dates) and entity summaries only, and grade every
+answer with the same Python script and upstream's `eval.eval_prompt`. The grader also checks that each answering
+prompt is the one upstream's `qa_prompt` builds from the stored context, character for character.
+
+```bash
+python -I parity/python/lme_qa.py select <longmemeval_oracle.json> parity/results/2026-11-12-lme-qa-questions.json
+NEO4J_PASSWORD=<dev password> python -I parity/python/lme_qa.py run <oracle> <questions.json> upstream.json upstream
+dotnet run --project tools/GraphitiNet.Eval -c Release -- qa <oracle> <questions.json> net.json net
+JUDGE_MODEL=gpt-5.5 python -I parity/python/lme_qa.py grade net.json net.graded.json
+python -I parity/python/lme_qa.py report *.graded.json
+```
+
+`lme_qa.py answer` and `GraphitiNet.Eval qa-answer` answer again from a run's stored contexts, without ingesting or
+searching, as a control for the answering stage alone.
+
 ## Differential tests
 
 The dataset runs above check whole pipelines. The differential tests check single functions: they prove that a
