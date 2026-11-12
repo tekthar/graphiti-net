@@ -198,6 +198,8 @@ Filters (`search_filters.py`):
 | `utils.content_chunking` (`should_chunk`, `chunk_json_content`, `chunk_text_content`, `chunk_message_content`, `generate_covering_chunks`, `estimate_tokens`) | `Utils.ContentChunking` (`ShouldChunk`, `ChunkJsonContent`, `ChunkTextContent`, `ChunkMessageContent`, `GenerateCoveringChunks`, `EstimateTokens`); not used by `AddEpisodeAsync`, as upstream |
 | `validate_entity_types`, `validate_excluded_entity_types`, `validate_group_id` | `EntityTypesUtils.ValidateEntityTypes`, `EntityTypesUtils.ValidateExcludedEntityTypes`, `Validation.ValidateGroupId` |
 | `semaphore_gather` | `Concurrency.SemaphoreGatherAsync` |
+| `utils.bulk_utils` (`retrieve_previous_episodes_bulk`, `add_nodes_and_edges_bulk`, `extract_nodes_and_edges_bulk`, `dedupe_nodes_bulk`, `dedupe_edges_bulk`, `resolve_edge_pointers`, `compress_uuid_map`) | `Maintenance.BulkUtils` (`RetrievePreviousEpisodesBulkAsync`, `AddNodesAndEdgesBulkAsync`, `ExtractNodesAndEdgesBulkAsync`, `DedupeNodesBulkAsync`, `DedupeEdgesBulkAsync`, `ResolveEdgePointers`, `CompressUuidMap`) |
+| `utils.maintenance.combined_extraction.extract_nodes_and_edges` | `Maintenance.CombinedExtractionOperations.ExtractNodesAndEdgesAsync` (named so it does not clash with the `Prompts.CombinedExtraction` response model) |
 
 ## Quickstart side by side
 

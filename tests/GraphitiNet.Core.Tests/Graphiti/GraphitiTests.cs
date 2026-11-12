@@ -14,8 +14,6 @@ namespace GraphitiNet.Tests.GraphitiApi;
 
 public class GraphitiTests
 {
-    private const string AwaitingWiring = "Needs NodeOperations/EdgeOperations wired into Graphiti.Seams.cs";
-
     // Construction
 
     [Fact]

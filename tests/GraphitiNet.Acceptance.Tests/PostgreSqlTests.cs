@@ -76,7 +76,9 @@ public class PostgreSqlTests
 
         var configs = await Postgres.QueryStringsAsync(
             $"SELECT DISTINCT group_id || '=' || text_search_config::text FROM \"{h.Schema}\".entity_edges");
-        Assert.Equal([$"{arabicGroup}=arabic", $"{simpleGroup}=simple"], configs.Order());
+        Assert.Equal(
+            new HashSet<string>([$"{arabicGroup}=arabic", $"{simpleGroup}=simple"]),
+            configs.ToHashSet());
     }
 
     /// <summary>An application context that hosts the graph tables next to its own.</summary>

@@ -106,14 +106,23 @@ public sealed record ParityEpisode(
 /// <summary>Runs a dataset through graphiti-net on recorded upstream answers.</summary>
 public static class ParityRunner
 {
+    /// <summary>The recording name of a dataset run in bulk mode (<c>run_upstream.py --bulk</c>).</summary>
+    public static string BulkRecording(string datasetName) => datasetName + "-bulk";
+
     /// <summary>Ingests the dataset and runs its queries, as <c>run_upstream.py</c> does.</summary>
+    /// <param name="datasetName">The dataset.</param>
+    /// <param name="driver">Storage.</param>
+    /// <param name="onCreated">Called with the replay client before ingestion.</param>
+    /// <param name="bulk">Ingest with one <see cref="Graphiti.AddEpisodeBulkAsync"/> call, as
+    /// <c>run_upstream.py --bulk</c>, replaying <c>&lt;dataset&gt;-bulk</c>.</param>
     public static async Task<(ParityResult Result, ReplayLLMClient Llm, ReplayEmbedder Embedder)> RunAsync(
         string datasetName,
         IGraphDriver driver,
-        Action<ReplayLLMClient>? onCreated = null)
+        Action<ReplayLLMClient>? onCreated = null,
+        bool bulk = false)
     {
         var dataset = ParityDataset.Load(datasetName);
-        var recording = Recording.Load(datasetName);
+        var recording = Recording.Load(bulk ? BulkRecording(datasetName) : datasetName);
         var llm = new ReplayLLMClient(recording);
         onCreated?.Invoke(llm);
         var embedder = new ReplayEmbedder(recording);
@@ -122,15 +131,31 @@ public static class ParityRunner
         await graphiti.BuildIndicesAndConstraintsAsync();
         await driver.GraphOps.ClearDataAsync([dataset.GroupId]);
 
-        foreach (var episode in dataset.Episodes)
+        if (bulk)
         {
-            await graphiti.AddEpisodeAsync(
-                name: episode.Name,
-                episodeBody: episode.Content,
-                sourceDescription: episode.SourceDescription,
-                referenceTime: episode.ReferenceTime,
-                source: episode.Source,
+            await graphiti.AddEpisodeBulkAsync(
+                dataset.Episodes.Select(episode => new RawEpisode
+                {
+                    Name = episode.Name,
+                    Content = episode.Content,
+                    SourceDescription = episode.SourceDescription,
+                    Source = episode.Source,
+                    ReferenceTime = episode.ReferenceTime,
+                }).ToList(),
                 groupId: dataset.GroupId);
+        }
+        else
+        {
+            foreach (var episode in dataset.Episodes)
+            {
+                await graphiti.AddEpisodeAsync(
+                    name: episode.Name,
+                    episodeBody: episode.Content,
+                    sourceDescription: episode.SourceDescription,
+                    referenceTime: episode.ReferenceTime,
+                    source: episode.Source,
+                    groupId: dataset.GroupId);
+            }
         }
 
         var nodes = await driver.EntityNodeOps.GetByGroupIdsAsync([dataset.GroupId]);

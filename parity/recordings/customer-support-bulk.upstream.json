@@ -1,0 +1,432 @@
+{
+  "implementation": "graphiti-core",
+  "dataset": "customer-support",
+  "mode": "bulk",
+  "entities": [
+    {
+      "name": "2027-03-02",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Renewal date for Acme Robotics' Enterprise plan is 2027-03-02."
+    },
+    {
+      "name": "40",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "40 seats on Acme Robotics' Enterprise plan after the team grew to 40 people; plan upgrade occurred 2026-03-02."
+    },
+    {
+      "name": "Acme Robotics",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Employer of Alice Chen; located in Berlin (per Alice Chen's message on 2026-01-10)."
+    },
+    {
+      "name": "Acme Robotics workspace",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Acme Robotics workspace (associated with Alice Chen in Berlin on the Pro plan) had Bob Martinez added by support agent Ravi on 2026-01-10 at 09:02:00+00:00."
+    },
+    {
+      "name": "Alice Chen",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Works at Acme Robotics in Berlin and is on the Pro plan; on 2026-01-10 she asked for help adding a teammate."
+    },
+    {
+      "name": "Berlin",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Location of Acme Robotics and workplace of Alice Chen (stated on 2026-01-10)."
+    },
+    {
+      "name": "Bob Martinez",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Bob Martinez was added to the Acme Robotics workspace by support agent Ravi on 2026-01-10 at 09:02:00+00:00."
+    },
+    {
+      "name": "Enterprise plan",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Acme Robotics upgraded to the Enterprise plan on 2026-03-02."
+    },
+    {
+      "name": "Lisbon",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Alice Chen moved from Berlin to Lisbon in April 2026."
+    },
+    {
+      "name": "Pro plan",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Subscription tier associated with Alice Chen at Acme Robotics (Alice Chen stated she is on the Pro plan on 2026-01-10)."
+    },
+    {
+      "name": "Ravi",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Support agent Ravi added Bob Martinez to Alice Chen's Acme Robotics workspace on 2026-01-10 at 09:02:00+00:00."
+    },
+    {
+      "name": "billing contact for our account",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Bob Martinez is the billing contact for Acme Robotics as of the week prior to 2026-06-20; prior billing contact was Alice Chen (billing_contact for Acme Robotics in May 2026). Acme Robotics account: Enterprise plan, 40 seats, renewal_date 2027-03-02."
+    },
+    {
+      "name": "robotics platform team at Acme Robotics",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Alice Chen leads the robotics platform team at Acme Robotics; Bob Martinez reports to her. The company upgraded to the Enterprise plan on 2026-03-02 as the team grew to 40 people."
+    },
+    {
+      "name": "team of 40 people",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Acme Robotics' team grew to 40 people as of 2026-03-02."
+    },
+    {
+      "name": "teammate",
+      "labels": [
+        "Entity"
+      ],
+      "summary": "Role Alice Chen requested assistance adding to her account or organization (Alice Chen asked for help adding a teammate on 2026-01-10)."
+    }
+  ],
+  "facts": [
+    {
+      "source": "Acme Robotics",
+      "name": "HAS_BILLING_CONTACT",
+      "target": "Alice Chen",
+      "fact": "Acme Robotics has Alice Chen as the billing contact.",
+      "valid_at": "2026-05-01T00:00:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Acme Robotics",
+      "name": "HAS_PLAN",
+      "target": "Enterprise plan",
+      "fact": "Acme Robotics has the Enterprise plan.",
+      "valid_at": "2026-05-01T00:00:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Acme Robotics",
+      "name": "HAS_RENEWAL_DATE",
+      "target": "2027-03-02",
+      "fact": "Acme Robotics has a renewal date of 2027-03-02.",
+      "valid_at": "2026-05-01T00:00:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Acme Robotics",
+      "name": "HAS_SEATS",
+      "target": "40",
+      "fact": "Acme Robotics has 40 seats.",
+      "valid_at": "2026-05-01T00:00:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Alice Chen",
+      "name": "HAS_PLAN",
+      "target": "Pro plan",
+      "fact": "Alice Chen is on the Pro plan.",
+      "valid_at": "2026-01-10T09:00:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Alice Chen",
+      "name": "LEADS",
+      "target": "robotics platform team at Acme Robotics",
+      "fact": "Alice Chen leads the robotics platform team at Acme Robotics.",
+      "valid_at": "2026-04-15T08:00:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Alice Chen",
+      "name": "LEFT",
+      "target": "Acme Robotics",
+      "fact": "Bob Martinez says Alice Chen left Acme Robotics last week.",
+      "valid_at": "2026-06-20T10:15:00+00:00",
+      "invalid_at": "2026-06-13T00:00:00+00:00",
+      "expired": true
+    },
+    {
+      "source": "Alice Chen",
+      "name": "MOVED_FROM",
+      "target": "Berlin",
+      "fact": "Alice Chen moved from Berlin in April 2026.",
+      "valid_at": "2026-04-01T00:00:00+00:00",
+      "invalid_at": "2026-04-30T00:00:00+00:00",
+      "expired": true
+    },
+    {
+      "source": "Alice Chen",
+      "name": "MOVED_TO",
+      "target": "Lisbon",
+      "fact": "Alice Chen moved to Lisbon in April 2026.",
+      "valid_at": "2026-04-01T00:00:00+00:00",
+      "invalid_at": "2026-04-30T00:00:00+00:00",
+      "expired": false
+    },
+    {
+      "source": "Alice Chen",
+      "name": "SUBSCRIBED_TO",
+      "target": "Enterprise plan",
+      "fact": "Alice Chen subscribed to the Enterprise plan today.",
+      "valid_at": "2026-03-02T14:30:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Alice Chen",
+      "name": "WANTS_TO_ADD",
+      "target": "teammate",
+      "fact": "Alice Chen wants to add a teammate.",
+      "valid_at": "2026-01-10T09:00:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Alice Chen",
+      "name": "WORKS_AT",
+      "target": "Acme Robotics",
+      "fact": "Alice Chen works at Acme Robotics.",
+      "valid_at": "2026-01-10T09:00:00+00:00",
+      "invalid_at": "2026-06-20T10:15:00+00:00",
+      "expired": true
+    },
+    {
+      "source": "Alice Chen",
+      "name": "WORKS_AT",
+      "target": "Acme Robotics workspace",
+      "fact": "Alice Chen works at Acme Robotics in Berlin.",
+      "valid_at": "2026-01-10T09:02:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Alice Chen",
+      "name": "WORKS_IN",
+      "target": "Berlin",
+      "fact": "Alice Chen works in Berlin.",
+      "valid_at": "2026-01-10T09:00:00+00:00",
+      "invalid_at": "2026-04-01T00:00:00+00:00",
+      "expired": true
+    },
+    {
+      "source": "Alice Chen",
+      "name": "WORKS_WITH",
+      "target": "team of 40 people",
+      "fact": "Alice Chen's team grew to 40 people.",
+      "valid_at": "2026-03-02T14:30:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Bob Martinez",
+      "name": "IS",
+      "target": "billing contact for our account",
+      "fact": "Bob Martinez says he is the new billing contact for our account.",
+      "valid_at": "2026-06-20T10:15:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    },
+    {
+      "source": "Bob Martinez",
+      "name": "REPLACED",
+      "target": "Alice Chen",
+      "fact": "Bob Martinez says Alice Chen left Acme Robotics last week.",
+      "valid_at": "2026-06-20T10:15:00+00:00",
+      "invalid_at": "2026-06-13T00:00:00+00:00",
+      "expired": true
+    },
+    {
+      "source": "Bob Martinez",
+      "name": "REPORTS_TO",
+      "target": "Alice Chen",
+      "fact": "Bob Martinez reports to Alice Chen.",
+      "valid_at": "2026-04-15T08:00:00+00:00",
+      "invalid_at": "2026-06-20T10:15:00+00:00",
+      "expired": true
+    },
+    {
+      "source": "Ravi",
+      "name": "ADDED",
+      "target": "Bob Martinez",
+      "fact": "Ravi added Bob Martinez to Alice Chen's Acme Robotics workspace.",
+      "valid_at": "2026-01-10T09:02:00+00:00",
+      "invalid_at": "2026-01-10T09:02:00+00:00",
+      "expired": false
+    },
+    {
+      "source": "robotics platform team at Acme Robotics",
+      "name": "PART_OF",
+      "target": "Acme Robotics",
+      "fact": "The robotics platform team at Acme Robotics is part of Acme Robotics.",
+      "valid_at": "2026-04-15T08:00:00+00:00",
+      "invalid_at": null,
+      "expired": false
+    }
+  ],
+  "searches": [
+    {
+      "query": "What plan is Acme Robotics on?",
+      "facts": [
+        "Acme Robotics has the Enterprise plan.",
+        "The robotics platform team at Acme Robotics is part of Acme Robotics.",
+        "Alice Chen leads the robotics platform team at Acme Robotics.",
+        "Acme Robotics has 40 seats.",
+        "Alice Chen works at Acme Robotics."
+      ],
+      "combined_nodes": [
+        "Acme Robotics workspace",
+        "Acme Robotics",
+        "robotics platform team at Acme Robotics",
+        "Enterprise plan",
+        "Pro plan",
+        "2027-03-02",
+        "Alice Chen",
+        "team of 40 people",
+        "billing contact for our account",
+        "40"
+      ],
+      "combined_edges": [
+        "Acme Robotics has the Enterprise plan.",
+        "The robotics platform team at Acme Robotics is part of Acme Robotics.",
+        "Alice Chen leads the robotics platform team at Acme Robotics.",
+        "Acme Robotics has 40 seats.",
+        "Alice Chen works at Acme Robotics.",
+        "Alice Chen is on the Pro plan.",
+        "Acme Robotics has a renewal date of 2027-03-02.",
+        "Alice Chen works at Acme Robotics in Berlin.",
+        "Acme Robotics has Alice Chen as the billing contact.",
+        "Bob Martinez says Alice Chen left Acme Robotics last week."
+      ]
+    },
+    {
+      "query": "Where does Alice Chen live?",
+      "facts": [
+        "Alice Chen works in Berlin.",
+        "Alice Chen moved from Berlin in April 2026.",
+        "Alice Chen works at Acme Robotics.",
+        "Alice Chen moved to Lisbon in April 2026.",
+        "Bob Martinez reports to Alice Chen."
+      ],
+      "combined_nodes": [
+        "Alice Chen",
+        "Berlin",
+        "Pro plan",
+        "Acme Robotics",
+        "Acme Robotics workspace",
+        "teammate",
+        "Lisbon",
+        "2027-03-02",
+        "robotics platform team at Acme Robotics",
+        "billing contact for our account"
+      ],
+      "combined_edges": [
+        "Alice Chen works in Berlin.",
+        "Alice Chen moved from Berlin in April 2026.",
+        "Bob Martinez reports to Alice Chen.",
+        "Alice Chen moved to Lisbon in April 2026.",
+        "Alice Chen works at Acme Robotics.",
+        "Alice Chen is on the Pro plan.",
+        "Alice Chen wants to add a teammate.",
+        "Alice Chen works at Acme Robotics in Berlin.",
+        "Bob Martinez says Alice Chen left Acme Robotics last week.",
+        "Bob Martinez says Alice Chen left Acme Robotics last week."
+      ]
+    },
+    {
+      "query": "Who is the billing contact for Acme Robotics?",
+      "facts": [
+        "Acme Robotics has Alice Chen as the billing contact.",
+        "Alice Chen leads the robotics platform team at Acme Robotics.",
+        "Bob Martinez says he is the new billing contact for our account.",
+        "The robotics platform team at Acme Robotics is part of Acme Robotics.",
+        "Alice Chen works at Acme Robotics."
+      ],
+      "combined_nodes": [
+        "billing contact for our account",
+        "Acme Robotics",
+        "robotics platform team at Acme Robotics",
+        "Acme Robotics workspace",
+        "Alice Chen",
+        "2027-03-02",
+        "team of 40 people",
+        "Enterprise plan",
+        "Bob Martinez",
+        "Pro plan"
+      ],
+      "combined_edges": [
+        "Acme Robotics has Alice Chen as the billing contact.",
+        "Alice Chen leads the robotics platform team at Acme Robotics.",
+        "Bob Martinez says he is the new billing contact for our account.",
+        "The robotics platform team at Acme Robotics is part of Acme Robotics.",
+        "Alice Chen works at Acme Robotics.",
+        "Acme Robotics has the Enterprise plan.",
+        "Acme Robotics has 40 seats.",
+        "Alice Chen works at Acme Robotics in Berlin.",
+        "Acme Robotics has a renewal date of 2027-03-02.",
+        "Bob Martinez says Alice Chen left Acme Robotics last week."
+      ]
+    },
+    {
+      "query": "Who does Bob Martinez report to?",
+      "facts": [
+        "Bob Martinez reports to Alice Chen.",
+        "Ravi added Bob Martinez to Alice Chen's Acme Robotics workspace.",
+        "Bob Martinez says he is the new billing contact for our account.",
+        "Bob Martinez says Alice Chen left Acme Robotics last week.",
+        "Bob Martinez says Alice Chen left Acme Robotics last week."
+      ],
+      "combined_nodes": [
+        "Bob Martinez",
+        "Acme Robotics workspace",
+        "Ravi",
+        "Alice Chen",
+        "billing contact for our account",
+        "robotics platform team at Acme Robotics",
+        "team of 40 people",
+        "Lisbon",
+        "Enterprise plan",
+        "40"
+      ],
+      "combined_edges": [
+        "Bob Martinez reports to Alice Chen.",
+        "Ravi added Bob Martinez to Alice Chen's Acme Robotics workspace.",
+        "Bob Martinez says he is the new billing contact for our account.",
+        "Bob Martinez says Alice Chen left Acme Robotics last week.",
+        "Bob Martinez says Alice Chen left Acme Robotics last week.",
+        "Alice Chen wants to add a teammate.",
+        "Alice Chen leads the robotics platform team at Acme Robotics.",
+        "Alice Chen's team grew to 40 people.",
+        "Alice Chen works at Acme Robotics.",
+        "Alice Chen moved to Lisbon in April 2026."
+      ]
+    }
+  ]
+}

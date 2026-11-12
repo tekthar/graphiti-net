@@ -80,6 +80,8 @@ Done and merged:
   ([results](../parity/results/2026-11-12-lme-graph-building.md)).
 - NuGet packaging (`GraphitiNet`, `GraphitiNet.PostgreSql`), a quickstart sample, and the release workflow:
   `0.1.0-preview.1`.
+- Bulk ingest (`AddEpisodeBulkAsync`, with combined entity and fact extraction by default), replayed against a
+  recorded upstream `add_episode_bulk` run on every commit.
 
 Next:
 

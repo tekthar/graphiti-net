@@ -10,6 +10,7 @@ the recordings of upstream's model answers, and the scripts that produce them.
 | `recordings/<dataset>.upstream.json` | Upstream's entities, facts (with validity and expiry) and search results |
 | `recordings/<dataset>.recording.json` | Every prompt upstream sent and the answer it got, and every embedding |
 | `python/generate_differential_fixtures.py` | Writes the [differential test](#differential-tests) fixtures from upstream's own functions |
+| `recordings/<dataset>-bulk.*.json` | The same, with the whole dataset ingested by one `add_episode_bulk` call (`--bulk`) |
 
 ## How the comparison works
 
@@ -35,6 +36,7 @@ Replaying upstream's recorded answers (`tests/GraphitiNet.Parity.Tests`), on eve
 | --- | --- | --- |
 | `customer-support` | Same 9 entities and 17 facts (endpoints, text, valid and invalid dates, expiry) | Known gap: one fact-resolution step gets a different candidate set |
 | `arabic` | Same 7 entities and 10 facts | Same 7 entities and 10 facts |
+| `customer-support`, bulk (`AddEpisodeBulkAsync`) | Same 15 entities and 20 facts | Same 15 entities and 20 facts |
 
 Search results match upstream's up to swaps of adjacent near-ties.
 
@@ -72,6 +74,9 @@ NEO4J_PASSWORD=<dev password> LLM_MODEL=gpt-5-mini EMBEDDING_MODEL=text-embeddin
   python parity/python/run_upstream.py parity/datasets/customer-support.json \
   parity/recordings/customer-support.upstream.json --record parity/recordings/customer-support.recording.json
 ```
+
+For the bulk recording, add `--bulk` and write to `<dataset>-bulk.upstream.json` and
+`<dataset>-bulk.recording.json`.
 
 The recordings were made with `gpt-5-mini` for both model sizes and `text-embedding-3-small` at 1,024 dimensions;
 each recording file stores its settings.

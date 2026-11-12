@@ -146,10 +146,31 @@ public class Issue1Tests
 
         public TaskCompletionSource SecondEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        private readonly TaskCompletionSource _bothResolved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _edgeEntries;
+
+        /// <summary>
+        /// Also holds each add at fact extraction until both have got there, that is until both have resolved their
+        /// entities. Without the group lock this guarantees neither add saves before the other looks for duplicates;
+        /// with the lock it would deadlock, so only the no-lock control sets it.
+        /// </summary>
+        public bool HoldUntilBothResolvedEntities { get; init; }
+
         public void Release() => _release.TrySetResult();
 
         public async Task OnAnswerAsync(string prompt, CancellationToken cancellationToken)
         {
+            if (HoldUntilBothResolvedEntities && prompt == "extract_edges.edge")
+            {
+                if (Interlocked.Increment(ref _edgeEntries) >= 2)
+                {
+                    _bothResolved.TrySetResult();
+                }
+
+                await _bothResolved.Task.WaitAsync(WaitLimit, cancellationToken);
+                return;
+            }
+
             if (prompt != "extract_nodes.extract_message")
             {
                 return;
@@ -193,7 +214,7 @@ public class Issue1Tests
     public async Task Control_without_the_group_lock_two_concurrent_adds_can_make_two_entities(string driver)
     {
         var llm = new ScriptedLlm(AliceChess, AliceBike);
-        var blocker = new ExtractionBlocker();
+        var blocker = new ExtractionBlocker { HoldUntilBothResolvedEntities = true };
         llm.BeforeAnswer = blocker.OnAnswerAsync;
         await using var h = await Harness.CreateAsync(driver, llm, groupLock: NoGroupLock.Instance);
         var group = Harness.NewGroup();
