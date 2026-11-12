@@ -26,6 +26,30 @@ client and a replay embedder that answer from the recording:
 Python Graphiti stores the graph in Neo4j, the port in PostgreSQL or memory, so keyword ranking can differ slightly;
 search results are compared as sets of the top results, not by exact order.
 
+## Results
+
+Replaying upstream's recorded answers (`tests/GraphitiNet.Parity.Tests`), on every commit:
+
+| Dataset | In-memory driver | PostgreSQL driver |
+| --- | --- | --- |
+| `customer-support` | Same 9 entities and 17 facts (endpoints, text, valid and invalid dates, expiry) | Known gap: one fact-resolution step gets a different candidate set |
+| `arabic` | Same 7 entities and 10 facts | Same 7 entities and 10 facts |
+
+Search results match upstream's up to swaps of adjacent near-ties.
+
+What the parity runs found and fixed so far:
+
+- **Similarity scale.** Neo4j's `vector.similarity.cosine` returns `(1 + cosine) / 2`, so upstream's `min_score` of 0.6
+  means a raw cosine above 0.2. Both drivers now score on Neo4j's scale; before, deduplication missed candidates such
+  as "Alice" for "Alice Chen".
+- **Tokenisation.** Lucene's `StandardTokenizer` keeps `ADDED_TO_WORKSPACE`, `can't` or `1,000` as one term; the
+  in-memory driver now follows the same word-boundary rules, and PostgreSQL indexes fact names without underscores.
+
+Candidate lists that come from search can come back in a different order than upstream's, because keyword ranking
+differs between Lucene and graphiti-net's drivers (and between upstream runs: Lucene's statistics count deleted
+documents until segments merge). The replay accepts a prompt whose only difference is the order of an indexed
+candidate list and translates the recorded answer's indexes; a different set of candidates still fails.
+
 ## Datasets
 
 | Dataset | What it checks |

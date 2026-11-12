@@ -23,6 +23,12 @@ public sealed class ReplayLLMClient(Recording recording) : LLMClient(new LLMConf
     /// <summary>Prompts that were answered, by key.</summary>
     public ConcurrentDictionary<string, int> Hits { get; } = new();
 
+    /// <summary>Every call in order: prompt name and whether it was recorded.</summary>
+    public ConcurrentQueue<string> Log { get; } = new();
+
+    /// <summary>Prompts answered from a recording whose candidate list was in a different order.</summary>
+    public ConcurrentBag<string> Reordered { get; } = [];
+
     /// <summary>Prompts that had no recording.</summary>
     public ConcurrentBag<string> Misses { get; } = [];
 
@@ -43,11 +49,20 @@ public sealed class ReplayLLMClient(Recording recording) : LLMClient(new LLMConf
         if (recording.Calls.TryGetValue(key, out var call))
         {
             Hits.AddOrUpdate(key, 1, (_, n) => n + 1);
+            Log.Enqueue($"hit  {promptName}");
             TokenTracker.Record(promptName, 0, 0);
             return Task.FromResult(call.Response);
         }
 
+        if (ReorderedLists.TryReplay(promptName, messages[0].Content, messages[^1].Content, recording.Calls.Values) is { } reordered)
+        {
+            Log.Enqueue($"reordered {promptName}");
+            Reordered.Add(promptName!);
+            return Task.FromResult(reordered);
+        }
+
         var report = DescribeMiss(promptName, messages);
+        Log.Enqueue($"MISS {promptName}");
         Misses.Add(report);
         throw new UnrecordedCallException(report);
     }
@@ -68,7 +83,8 @@ public sealed class ReplayLLMClient(Recording recording) : LLMClient(new LLMConf
         var candidates = recording.Calls.Values.Where(c => c.PromptName == promptName).ToList();
         if (candidates.Count == 0)
         {
-            sb.Append(" Upstream never called this prompt in this dataset.");
+            sb.Append(" Upstream never called this prompt in this dataset. The port's user message:\n");
+            sb.Append(messages[^1].Content.Length > 3000 ? messages[^1].Content[..3000] : messages[^1].Content);
             return sb.ToString();
         }
 
@@ -82,6 +98,8 @@ public sealed class ReplayLLMClient(Recording recording) : LLMClient(new LLMConf
         sb.Append(CultureInfo.InvariantCulture, $" {candidates.Count} recorded with this name; the closest first differs at character {at}:\n");
         sb.Append(CultureInfo.InvariantCulture, $"  port:     ...{Excerpt(ours, at)}...\n");
         sb.Append(CultureInfo.InvariantCulture, $"  upstream: ...{Excerpt(best.Text, at)}...");
+        var user = messages[^1].Content;
+        sb.Append("\nThe port's user message:\n").Append(user.Length > 4000 ? user[..4000] : user);
         return sb.ToString();
     }
 

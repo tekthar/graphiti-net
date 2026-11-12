@@ -22,7 +22,7 @@ namespace GraphitiNet.Driver.PostgreSql.Operations;
 /// matched with its group's text search configuration. Candidates are ranked by the number of distinct query terms
 /// they contain, then by <c>ts_rank</c> (normalisation 1, dividing by the log of the document length), best first,
 /// ties by uuid. PostgreSQL has no BM25, so ranking differs from upstream's Lucene scores.</para>
-/// <para><b>Similarity:</b> cosine similarity (<c>1 - (embedding &lt;=&gt; query)</c>), strictly above
+/// <para><b>Similarity:</b> Neo4j's cosine score, <c>(1 + cosine) / 2</c> = <c>1 - (embedding &lt;=&gt; query) / 2</c>, strictly above
 /// <c>minScore</c> as upstream, exact by default; see
 /// <see cref="PostgresGraphOptions.ApproximateVectorSearch"/>.</para>
 /// <para><b>Breadth-first:</b> a recursive CTE walks facts from source to target and episode-to-entity links
@@ -381,7 +381,7 @@ internal sealed class SearchOperations(DriverCore core) : ISearchOperations
     {
         var min = b.Param(minScore, NpgsqlDbType.Double);
         var limitParam = b.Int(limit);
-        b.Append($"SELECT s.* FROM (SELECT {columns}, 1 - ({embedding} <=> {vector}) AS score FROM {from}")
+        b.Append($"SELECT s.* FROM (SELECT {columns}, 1 - ({embedding} <=> {vector}) / 2 AS score FROM {from}")
             .Append(FilterSql.Where(conditions, " WHERE "));
         if (core.Options.ApproximateVectorSearch)
         {

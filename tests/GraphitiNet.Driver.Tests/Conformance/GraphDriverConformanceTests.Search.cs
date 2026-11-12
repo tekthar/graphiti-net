@@ -174,28 +174,32 @@ public abstract partial class GraphDriverConformanceTests
         await Save(exact, close, far, orthogonal, opposite, none);
         var query = Vec(1, 0, 0);
 
-        var result = await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 0.7);
+        var result = await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 0.85);
         Assert.Equal(Ids([exact, close]), Ids(result));
         AssertEntity(exact, result[0]);
 
         Assert.Equal(
             Ids([exact, close, far]),
-            Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 0.4)));
+            Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 0.7)));
         Assert.Equal(
             Ids([exact, close, far, orthogonal]),
-            Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: -0.5)));
+            Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 0.25)));
         Assert.Equal(
             Ids([exact, close]),
             Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], limit: 2, minScore: 0)));
 
-        // The minimum is exclusive, as upstream (score > min_score): the orthogonal vector scores exactly 0.
+        // Scores are Neo4j's (1 + cosine) / 2, and the minimum is exclusive, as upstream (score > min_score): the
+        // orthogonal vector scores exactly 0.5 and the opposite one 0.
         Assert.Equal(
             Ids([exact, close, far]),
+            Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 0.5)));
+        Assert.Equal(
+            Ids([exact, close, far, orthogonal]),
             Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(query, NoFilter, [group], minScore: 0)));
 
-        // The default minimum score is 0.6. Cosine ignores length.
+        // The default minimum score is 0.6 (a raw cosine above 0.2). Cosine ignores length.
         Assert.Equal(
-            Ids([exact, close]),
+            Ids([exact, close, far]),
             Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(Vec(3, 0, 0), NoFilter, [group])));
     }
 

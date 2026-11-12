@@ -147,7 +147,12 @@ public static class GraphitiModelBuilderExtensions
             .HasColumnName("text_search_config")
             .HasColumnType("regconfig")
             .HasDefaultValueSql($"'{PostgresGraphOptions.SimpleTextSearchConfig}'::regconfig");
-        var text = string.Join(" || ' ' || ", columns.Select(c => $"coalesce({c}, '')"));
+        // Lucene's StandardTokenizer keeps a relation name such as ADDED_TO_WORKSPACE as one term, where PostgreSQL's
+        // parser splits it at the underscores; dropping them keeps it one term, so "to" doesn't match every fact.
+        var text = string.Join(" || ' ' || ", columns.Select(c =>
+            c == "name" && table.EndsWith("entity_edges", StringComparison.Ordinal)
+                ? "coalesce(replace(name, '_', ''), '')"
+                : $"coalesce({c}, '')"));
         b.Property(vector)
             .HasColumnName("search_vector")
             .HasColumnType("tsvector")

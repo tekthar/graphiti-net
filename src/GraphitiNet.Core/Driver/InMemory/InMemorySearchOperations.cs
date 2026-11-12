@@ -300,6 +300,12 @@ internal sealed class InMemorySearchOperations(InMemoryStore store) : ISearchOpe
             cancellationToken);
     }
 
+    /// <summary>
+    /// The similarity score of the driver contract: Neo4j's <c>vector.similarity.cosine</c>, which is
+    /// <c>(1 + cosine) / 2</c>, in [0, 1]. Upstream's thresholds (such as <c>min_score</c> 0.6) are on this scale.
+    /// </summary>
+    internal static double? Similarity(IReadOnlyList<float> a, float[] b) => Cosine(a, b) is { } c ? (1 + c) / 2 : null;
+
     /// <summary>Cosine similarity, or <see langword="null"/> when the vectors cannot be compared.</summary>
     internal static double? Cosine(IReadOnlyList<float> a, float[] b)
     {
@@ -333,7 +339,7 @@ internal sealed class InMemorySearchOperations(InMemoryStore store) : ISearchOpe
         }
 
         return items
-            .Select(item => (Item: item, Score: embeddingOf(item) is { } embedding ? Cosine(searchVector, embedding) : null))
+            .Select(item => (Item: item, Score: embeddingOf(item) is { } embedding ? Similarity(searchVector, embedding) : null))
             .Where(x => x.Score is { } score && score > minScore)
             .OrderByDescending(x => x.Score)
             .ThenBy(x => uuidOf(x.Item), StringComparer.Ordinal)

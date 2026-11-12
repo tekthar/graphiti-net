@@ -50,11 +50,20 @@ public class InMemoryGraphDriverTests
     }
 
     [Fact]
-    public void Tokenizer_lowercases_and_splits_on_anything_but_letters_and_digits()
+    public void Tokenizer_follows_lucene_standard_tokenizer_word_boundaries()
     {
+        // Underscores join (Neo4j indexes relation names like WORKS_AT as one term); hyphens and slashes split.
         Assert.Equal(
-            ["works", "at", "acme", "co", "2024", "café", "naïve"],
+            ["works_at", "acme", "co", "2024", "café", "naïve"],
             Bm25.Tokenize("WORKS_AT Acme-Co, 2024! Café/naïve"));
+
+        // Apostrophes, periods and colons join letters; periods, commas and semicolons join digits.
+        Assert.Equal(
+            ["alice's", "can't", "u.s.a", "foo:bar", "2026.03", "1,000", "end"],
+            Bm25.Tokenize("Alice's can't U.S.A foo:bar 2026.03 1,000 end."));
+
+        // Arabic letters and their combining marks stay in one word.
+        Assert.Equal(["مُحَمَّد", "العلي"], Bm25.Tokenize("مُحَمَّد العلي"));
         Assert.Empty(Bm25.Tokenize("  ...  "));
     }
 

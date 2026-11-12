@@ -72,8 +72,10 @@ class Recorder:
 
         async def record_create(input_data):
             vector = await create(input_data)
-            if isinstance(input_data, str):
-                self.embeddings.setdefault(input_data, pack_vector(vector))
+            # Search embeds the query as a one-element list.
+            text = input_data[0] if isinstance(input_data, list) and len(input_data) == 1 else input_data
+            if isinstance(text, str):
+                self.embeddings.setdefault(text, pack_vector(vector))
             return vector
 
         async def record_create_batch(input_data_list):

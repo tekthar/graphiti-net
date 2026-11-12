@@ -327,7 +327,9 @@ public interface INextEpisodeEdgeOperations : IRecordOperations<NextEpisodeEdge>
 /// <c>message</c> or <c>json</c>); communities on name. A record matches when it contains any query term (Lucene's default
 /// OR), ignoring case and punctuation. Results are ordered by the backend's relevance score, best first. An empty or
 /// whitespace query returns nothing.</para>
-/// <para><b>Similarity:</b> cosine similarity against the stored embedding; only results scoring strictly more than
+/// <para><b>Similarity:</b> the score is Neo4j's <c>vector.similarity.cosine</c>, which is <c>(1 + cosine) / 2</c> in
+/// [0, 1] (orthogonal vectors score 0.5), because upstream's thresholds are tuned on that scale: its default
+/// <c>min_score</c> of 0.6 means a raw cosine above 0.2. Only results scoring strictly more than
 /// <c>minScore</c> (<c>score &gt; min_score</c>, as upstream), best first. Records with no embedding never match. The
 /// source and target restriction of fact search applies with or without group ids (upstream applies it only with group
 /// ids, but core always passes none).</para>
