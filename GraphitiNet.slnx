@@ -4,6 +4,7 @@
     <Project Path="src/GraphitiNet.PostgreSql/GraphitiNet.PostgreSql.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/GraphitiNet.Acceptance.Tests/GraphitiNet.Acceptance.Tests.csproj" />
     <Project Path="tests/GraphitiNet.Core.Tests/GraphitiNet.Core.Tests.csproj" />
     <Project Path="tests/GraphitiNet.Driver.Tests/GraphitiNet.Driver.Tests.csproj" />
     <Project Path="tests/GraphitiNet.Parity.Tests/GraphitiNet.Parity.Tests.csproj" />

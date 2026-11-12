@@ -59,6 +59,8 @@ The port follows one tagged Graphiti release at a time and records which one. Th
 - [PostgreSQL storage](docs/postgresql.md): setup, hosting the tables in your own DbContext, migrations, embedding
   size, languages and how keyword ranking differs from upstream.
 - [Roadmap](docs/roadmap.md): the phases of the port and the first pull requests.
+- [Acceptance tests](docs/acceptance.md): each requirement of the first consumer, AbpAgent, and the test that checks
+  it.
 - [Development environment](docs/development.md): services, settings and the Claude Code cloud environment.
 
 ## Contributing

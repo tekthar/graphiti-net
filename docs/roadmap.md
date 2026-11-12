@@ -42,7 +42,7 @@ Found while surveying the baseline. Fix these in [requirements.md](requirements.
 [AbpAgent](https://github.com/tekthar/abp-agent) is graphiti-net's first consumer. Its requirements are in
 [#1](https://github.com/tekthar/graphiti-net/issues/1) and its suggested order of work in
 [#2](https://github.com/tekthar/graphiti-net/issues/2). Everything below is additive: default behaviour stays
-upstream's.
+upstream's. [acceptance.md](acceptance.md) maps each criterion to its acceptance test and status.
 
 | Requirement | Where it lands |
 | --- | --- |
