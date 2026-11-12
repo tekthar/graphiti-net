@@ -15,6 +15,9 @@ public class AdditionsTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
+    // Concurrent triplets can see each other's fact as an invalidation candidate, which asks the LLM.
+    private const string DedupeAnswer = """{"duplicate_facts": [], "contradicted_facts": []}""";
+
     /// <summary>An embedder whose calls wait for <see cref="Release"/>, counting how many run at once.</summary>
     private sealed class BlockingEmbedder : EmbedderClient
     {
@@ -137,7 +140,7 @@ public class AdditionsTests
     {
         var embedder = new BlockingEmbedder();
         var driver = new Driver.InMemory.InMemoryGraphDriver();
-        await using var graphiti = new Graphiti(driver, new ScriptedLlmClient("{}"), embedder, new LengthCrossEncoder(),
+        await using var graphiti = new Graphiti(driver, new ScriptedLlmClient(DedupeAnswer), embedder, new LengthCrossEncoder(),
             groupLock: NoGroupLock.Instance);
         var group = NewGroup();
 
