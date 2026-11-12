@@ -70,5 +70,8 @@ internal static class Params
     public static NpgsqlParameter Embedding(float[]? value) =>
         new() { Value = (object?)value ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Real };
 
+    public static NpgsqlParameter IntArray(int[] values) =>
+        new() { Value = values, NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Integer };
+
     public static NpgsqlParameter Int(int value) => new() { Value = value, NpgsqlDbType = NpgsqlDbType.Integer };
 }

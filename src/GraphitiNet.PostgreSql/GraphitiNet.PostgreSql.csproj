@@ -3,7 +3,8 @@
   <PropertyGroup>
     <RootNamespace>GraphitiNet.Driver.PostgreSql</RootNamespace>
     <PackageId>GraphitiNet.PostgreSql</PackageId>
-    <Description>PostgreSQL storage for graphiti-net through EF Core, with pgvector for vector search and built-in full-text search. No graph database needed.</Description>
+    <Description>PostgreSQL storage for graphiti-net through EF Core, with pgvector for vector search and BM25
+      keyword search in SQL.</Description>
     <PackageTags>$(PackageTags);postgresql;pgvector;efcore</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>

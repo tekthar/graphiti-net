@@ -34,7 +34,7 @@ Replaying upstream's recorded answers (`tests/GraphitiNet.Parity.Tests`), on eve
 
 | Dataset | In-memory driver | PostgreSQL driver |
 | --- | --- | --- |
-| `customer-support` | Same 9 entities and 17 facts (endpoints, text, valid and invalid dates, expiry) | Known gap: one fact-resolution step gets a different candidate set |
+| `customer-support` | Same 9 entities and 17 facts (endpoints, text, valid and invalid dates, expiry) | Same 9 entities and 17 facts |
 | `arabic` | Same 7 entities and 10 facts | Same 7 entities and 10 facts |
 | `customer-support`, bulk (`AddEpisodeBulkAsync`) | Same 15 entities and 20 facts | Same 15 entities and 20 facts |
 
@@ -45,8 +45,11 @@ What the parity runs found and fixed so far:
 - **Similarity scale.** Neo4j's `vector.similarity.cosine` returns `(1 + cosine) / 2`, so upstream's `min_score` of 0.6
   means a raw cosine above 0.2. Both drivers now score on Neo4j's scale; before, deduplication missed candidates such
   as "Alice" for "Alice Chen".
-- **Tokenisation.** Lucene's `StandardTokenizer` keeps `ADDED_TO_WORKSPACE`, `can't` or `1,000` as one term; the
-  in-memory driver now follows the same word-boundary rules, and PostgreSQL indexes fact names without underscores.
+- **Tokenisation.** Lucene's `StandardTokenizer` keeps `ADDED_TO_WORKSPACE`, `can't` or `1,000` as one term; both
+  drivers now follow the same word-boundary rules.
+- **Keyword ranking on PostgreSQL.** The PostgreSQL driver ranked keyword matches with `ts_rank`, so in one
+  customer-support fact-resolution step a different fact made the candidate cut-off than on Neo4j. It now ranks with
+  Lucene's BM25 in SQL, giving the same results in the same order as the in-memory driver, and replays both datasets.
 
 Candidate lists that come from search can come back in a different order than upstream's, because keyword ranking
 differs between Lucene and graphiti-net's drivers (and between upstream runs: Lucene's statistics count deleted

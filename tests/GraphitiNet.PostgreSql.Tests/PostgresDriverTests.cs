@@ -32,13 +32,13 @@ public sealed class PostgresDriverTests : IAsyncLifetime
             "SELECT table_name::text FROM information_schema.tables WHERE table_schema = $1 ORDER BY 1", _schema);
         Assert.Equal(
             ["communities", "community_edges", "entities", "entity_edges", "episodes", "episodic_edges",
-                "has_episode_edges", "next_episode_edges", "sagas"],
+                "has_episode_edges", "next_episode_edges", "sagas", "search_statistics"],
             tables);
 
         var indexes = await QueryAsync<string>("SELECT indexdef FROM pg_indexes WHERE schemaname = $1", _schema);
         Assert.Equal(3, indexes.Count(i => i.Contains("USING hnsw", StringComparison.Ordinal)
             && i.Contains("vector_cosine_ops", StringComparison.Ordinal)));
-        Assert.Equal(4, indexes.Count(i => i.Contains("USING gin (search_vector)", StringComparison.Ordinal)));
+        Assert.Equal(4, indexes.Count(i => i.Contains("USING gin (search_keys)", StringComparison.Ordinal)));
         Assert.Equal(9, indexes.Count(i => i.Contains("UNIQUE INDEX pk_", StringComparison.Ordinal)));
 
         var vectorType = await QueryAsync<string>(
@@ -47,11 +47,15 @@ public sealed class PostgresDriverTests : IAsyncLifetime
             _schema);
         Assert.Equal(["vector(6)"], vectorType);
 
-        var generated = await QueryAsync<string>(
-            "SELECT table_name::text FROM information_schema.columns "
-            + "WHERE table_schema = $1 AND column_name = 'search_vector' AND is_generated = 'ALWAYS' ORDER BY 1",
+        var searchColumns = await QueryAsync<string>(
+            "SELECT table_name::text || '.' || column_name::text || ' ' || udt_name::text FROM information_schema.columns "
+            + "WHERE table_schema = $1 AND column_name LIKE 'search_%' ORDER BY 1",
             _schema);
-        Assert.Equal(["communities", "entities", "entity_edges", "episodes"], generated);
+        Assert.Equal(
+            SqlNames.AllTables.Where(t => t is "communities" or "entities" or "entity_edges" or "episodes")
+                .Order(StringComparer.Ordinal)
+                .SelectMany(t => new[] { $"{t}.search_keys _text", $"{t}.search_lengths _int4", $"{t}.search_terms jsonb" }),
+            searchColumns);
     }
 
     [PostgresFact]

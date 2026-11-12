@@ -92,6 +92,63 @@ public abstract partial class GraphDriverConformanceTests
     }
 
     [SkippableFact]
+    public async Task Fulltext_statistics_cover_every_group_as_one_lucene_index()
+    {
+        var group = NewGroup();
+        var other = NewGroup();
+        var common = UniqueWord();
+        var rare = UniqueWord();
+        var ids = new[] { Guid.NewGuid().ToString(), Guid.NewGuid().ToString() }.Order(StringComparer.Ordinal).ToArray();
+        var withCommon = new EntityNode { Uuid = ids[0], Name = common, GroupId = group, CreatedAt = Day(1) };
+        var withRare = new EntityNode { Uuid = ids[1], Name = rare, GroupId = group, CreatedAt = Day(1) };
+        await Save(withCommon, withRare);
+        await Save([.. Enumerable.Range(0, 5).Select(_ => Entity(other, common))]);
+
+        // Within the searched group both terms occur once, and the tie would go to the smaller id; across the whole
+        // index (upstream's Lucene statistics) the term the other group shares is common and weighs less.
+        var result = await Driver.SearchOps.NodeFulltextSearchAsync($"{common} {rare}", NoFilter, [group]);
+        Assert.Equal([withRare.Uuid, withCommon.Uuid], Ids(result));
+    }
+
+    [SkippableFact]
+    public async Task Fulltext_repeated_query_terms_count_each_time()
+    {
+        var group = NewGroup();
+        var first = UniqueWord();
+        var second = UniqueWord();
+        var ids = new[] { Guid.NewGuid().ToString(), Guid.NewGuid().ToString() }.Order(StringComparer.Ordinal).ToArray();
+        var withFirst = new EntityNode { Uuid = ids[0], Name = first, GroupId = group, CreatedAt = Day(1) };
+        var withSecond = new EntityNode { Uuid = ids[1], Name = second, GroupId = group, CreatedAt = Day(1) };
+        await Save(withFirst, withSecond);
+
+        // Equal scores tie by id; a repeated term adds its score again, as in Lucene's OR query.
+        Assert.Equal(
+            [withFirst.Uuid, withSecond.Uuid],
+            Ids(await Driver.SearchOps.NodeFulltextSearchAsync($"{second} {first}", NoFilter, [group])));
+        Assert.Equal(
+            [withSecond.Uuid, withFirst.Uuid],
+            Ids(await Driver.SearchOps.NodeFulltextSearchAsync($"{second} {second} {first}", NoFilter, [group])));
+    }
+
+    [SkippableFact]
+    public async Task Fulltext_splits_words_like_lucenes_standard_tokenizer()
+    {
+        var group = NewGroup();
+        var word = UniqueWord() + "x"; // ends in a letter, so that an apostrophe joins it to the next
+        var ann = Entity(group, "Ann");
+        var ben = Entity(group, "Ben");
+        await Save(ann, ben);
+        var fact = Fact(group, ann, ben, $"ADDED_{word.ToUpperInvariant()}_TO", $"{word}'s plan grew to 1,000 seats");
+        await Save(fact);
+
+        // Underscores join words; an apostrophe joins letters and a comma digits.
+        AssertSameEdges([fact], await Driver.SearchOps.EdgeFulltextSearchAsync($"added_{word}_to", NoFilter, [group]));
+        AssertSameEdges([fact], await Driver.SearchOps.EdgeFulltextSearchAsync($"{word.ToUpperInvariant()}'S", NoFilter, [group]));
+        AssertSameEdges([fact], await Driver.SearchOps.EdgeFulltextSearchAsync("1,000", NoFilter, [group]));
+        Assert.Empty(await Driver.SearchOps.EdgeFulltextSearchAsync($"{word} added 000", NoFilter, [group]));
+    }
+
+    [SkippableFact]
     public async Task Fulltext_search_restricts_to_the_given_groups()
     {
         var group = NewGroup();

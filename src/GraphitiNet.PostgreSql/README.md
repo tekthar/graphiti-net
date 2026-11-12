@@ -2,7 +2,7 @@
 
 PostgreSQL storage for [graphiti-net](https://github.com/tekthar/graphiti-net), a C# rewrite of Python Graphiti. The
 graph lives in nine ordinary tables, through EF Core, with [pgvector](https://github.com/pgvector/pgvector) for
-vector search and PostgreSQL's built-in full-text search for keyword search. No graph database is needed.
+vector search and BM25 keyword search in SQL, with the same tokenisation and ranking as upstream's Lucene indexes. No graph database is needed.
 
 **Preview.** The API and the table layout may still change before 1.0.
 

@@ -17,11 +17,12 @@ namespace GraphitiNet.Driver.PostgreSql.Operations;
 
 /// <summary>Full-text, vector and graph search in SQL.</summary>
 /// <remarks>
-/// <para><b>Full-text:</b> the query is normalised with each searched group's text search configuration and its lexemes are
-/// OR-ed, like Lucene's default operator upstream, so a record matching any term is a candidate. Each row is
-/// matched with its group's text search configuration. Candidates are ranked by the number of distinct query terms
-/// they contain, then by <c>ts_rank</c> (normalisation 1, dividing by the log of the document length), best first,
-/// ties by uuid. PostgreSQL has no BM25, so ranking differs from upstream's Lucene scores.</para>
+/// <para><b>Full-text:</b> Lucene's BM25 in SQL, as upstream's Neo4j indexes and the in-memory driver rank. The query is
+/// split into terms like Lucene's standard tokenizer, normalised with each searched group's text search
+/// configuration (unchanged under <c>simple</c>), and a record containing any term is a candidate (Lucene's default
+/// OR), found through a GIN index. Candidates are scored with BM25 from the per-field term frequencies and lengths
+/// the driver stores with each row and collection statistics over the whole table; best first, ties by uuid. See
+/// <see cref="Bm25"/>.</para>
 /// <para><b>Similarity:</b> Neo4j's cosine score, <c>(1 + cosine) / 2</c> = <c>1 - (embedding &lt;=&gt; query) / 2</c>, strictly above
 /// <c>minScore</c> as upstream, exact by default; see
 /// <see cref="PostgresGraphOptions.ApproximateVectorSearch"/>.</para>
@@ -48,15 +49,30 @@ internal sealed class SearchOperations(DriverCore core) : ISearchOperations
             return Empty<EntityNode>();
         }
 
-        var b = new SqlBuilder();
-        var tsQuery = TsQuery(b, query, groupIds, SqlNames.Entities);
-        var conditions = FilterSql.NodeConditions(b, searchFilter, "n");
-        AddGroupCondition(b, groupIds, "n", conditions);
-        b.Append($"SELECT {RecordMapper.EntityColumns("n")} FROM ({tsQuery}) AS tq ")
-            .Append($"JOIN {N.Table(SqlNames.Entities)} AS n ON n.text_search_config = tq.cfg AND n.search_vector @@ tq.q")
-            .Append(FilterSql.Where(conditions, " WHERE "))
-            .Append($" ORDER BY {Rank("n")} DESC, n.uuid LIMIT {b.Int(limit)}");
-        return ListAsync(b, RecordMapper.ReadEntity, cancellationToken);
+        return FulltextAsync(
+            query,
+            groupIds,
+            SqlNames.Entities,
+            "n",
+            (b, bm25) =>
+            {
+                var filters = FilterSql.NodeConditions(b, searchFilter, "n");
+                if (filters.Count == 0)
+                {
+                    b.Append(bm25.TopK(RecordMapper.EntityColumns("n"), b.Int(limit)));
+                    return;
+                }
+
+                var conditions = new List<string> { bm25.Match };
+                conditions.AddRange(filters);
+                AddGroupCondition(b, groupIds, "n", conditions);
+                b.Append($"SELECT {RecordMapper.EntityColumns("n")}, {bm25.Score} FROM {bm25.From}")
+                    .Append(FilterSql.Where(conditions, " WHERE "))
+                    .Append($" ORDER BY {bm25.Score} DESC, n.uuid LIMIT {b.Int(limit)}");
+            },
+            RecordMapper.ReadEntity,
+            limit,
+            cancellationToken);
     }
 
     public Task<IReadOnlyList<EntityNode>> NodeSimilaritySearchAsync(
@@ -130,16 +146,31 @@ internal sealed class SearchOperations(DriverCore core) : ISearchOperations
             return Empty<EntityEdge>();
         }
 
-        var b = new SqlBuilder();
-        var tsQuery = TsQuery(b, query, groupIds, SqlNames.EntityEdges);
-        var conditions = FilterSql.EdgeConditions(b, searchFilter, "e", "n", "m");
-        AddGroupCondition(b, groupIds, "e", conditions);
-        b.Append($"SELECT {RecordMapper.EntityEdgeColumns("e")} FROM ({tsQuery}) AS tq ")
-            .Append($"JOIN {N.Table(SqlNames.EntityEdges)} AS e ON e.text_search_config = tq.cfg AND e.search_vector @@ tq.q")
-            .Append(EndpointJoins(searchFilter, "e"))
-            .Append(FilterSql.Where(conditions, " WHERE "))
-            .Append($" ORDER BY {Rank("e")} DESC, e.uuid LIMIT {b.Int(limit)}");
-        return ListAsync(b, RecordMapper.ReadEntityEdge, cancellationToken);
+        return FulltextAsync(
+            query,
+            groupIds,
+            SqlNames.EntityEdges,
+            "e",
+            (b, bm25) =>
+            {
+                var filters = FilterSql.EdgeConditions(b, searchFilter, "e", "n", "m");
+                if (filters.Count == 0 && !FilterSql.NeedsEndpoints(searchFilter))
+                {
+                    b.Append(bm25.TopK(RecordMapper.EntityEdgeColumns("e"), b.Int(limit)));
+                    return;
+                }
+
+                var conditions = new List<string> { bm25.Match };
+                conditions.AddRange(filters);
+                AddGroupCondition(b, groupIds, "e", conditions);
+                b.Append($"SELECT {RecordMapper.EntityEdgeColumns("e")}, {bm25.Score} FROM {bm25.From}")
+                    .Append(EndpointJoins(searchFilter, "e"))
+                    .Append(FilterSql.Where(conditions, " WHERE "))
+                    .Append($" ORDER BY {bm25.Score} DESC, e.uuid LIMIT {b.Int(limit)}");
+            },
+            RecordMapper.ReadEntityEdge,
+            limit,
+            cancellationToken);
     }
 
     public Task<IReadOnlyList<EntityEdge>> EdgeSimilaritySearchAsync(
@@ -229,15 +260,15 @@ internal sealed class SearchOperations(DriverCore core) : ISearchOperations
             return Empty<EpisodicNode>();
         }
 
-        var b = new SqlBuilder();
-        var tsQuery = TsQuery(b, query, groupIds, SqlNames.Episodes);
-        var conditions = new List<string>();
-        AddGroupCondition(b, groupIds, "ep", conditions);
-        b.Append($"SELECT {RecordMapper.EpisodeColumns("ep")} FROM ({tsQuery}) AS tq ")
-            .Append($"JOIN {N.Table(SqlNames.Episodes)} AS ep ON ep.text_search_config = tq.cfg AND ep.search_vector @@ tq.q")
-            .Append(FilterSql.Where(conditions, " WHERE "))
-            .Append($" ORDER BY {Rank("ep")} DESC, ep.uuid LIMIT {b.Int(limit)}");
-        return ListAsync(b, RecordMapper.ReadEpisode, cancellationToken);
+        return FulltextAsync(
+            query,
+            groupIds,
+            SqlNames.Episodes,
+            "ep",
+            (b, bm25) => b.Append(bm25.TopK(RecordMapper.EpisodeColumns("ep"), b.Int(limit))),
+            RecordMapper.ReadEpisode,
+            limit,
+            cancellationToken);
     }
 
     public Task<IReadOnlyList<CommunityNode>> CommunityFulltextSearchAsync(
@@ -251,15 +282,15 @@ internal sealed class SearchOperations(DriverCore core) : ISearchOperations
             return Empty<CommunityNode>();
         }
 
-        var b = new SqlBuilder();
-        var tsQuery = TsQuery(b, query, groupIds, SqlNames.Communities);
-        var conditions = new List<string>();
-        AddGroupCondition(b, groupIds, "c", conditions);
-        b.Append($"SELECT {RecordMapper.CommunityColumns("c")} FROM ({tsQuery}) AS tq ")
-            .Append($"JOIN {N.Table(SqlNames.Communities)} AS c ON c.text_search_config = tq.cfg AND c.search_vector @@ tq.q")
-            .Append(FilterSql.Where(conditions, " WHERE "))
-            .Append($" ORDER BY {Rank("c")} DESC, c.uuid LIMIT {b.Int(limit)}");
-        return ListAsync(b, RecordMapper.ReadCommunity, cancellationToken);
+        return FulltextAsync(
+            query,
+            groupIds,
+            SqlNames.Communities,
+            "c",
+            (b, bm25) => b.Append(bm25.TopK(RecordMapper.CommunityColumns("c"), b.Int(limit))),
+            RecordMapper.ReadCommunity,
+            limit,
+            cancellationToken);
     }
 
     public Task<IReadOnlyList<CommunityNode>> CommunitySimilaritySearchAsync(
@@ -324,50 +355,352 @@ internal sealed class SearchOperations(DriverCore core) : ISearchOperations
     private static bool IsSearchableText(string query, IReadOnlyList<string>? groupIds)
     {
         Validation.ValidateGroupIds(groupIds);
-        return !string.IsNullOrWhiteSpace(query) && groupIds is not { Count: 0 };
+        return groupIds is not { Count: 0 } && FullText.Tokenize(query).Count > 0;
     }
 
     /// <summary>
-    /// One row per text search configuration in play, yielding <c>cfg</c>, <c>q</c> (the OR of the query's lexemes
-    /// normalised with that configuration) and <c>terms</c> (each lexeme as its own tsquery). Rows only match the
-    /// query built with their own configuration. Each lexeme is quoted, so operators and punctuation in user input are
-    /// never parsed as tsquery syntax. A query of only stop words yields no rows, which matches nothing.
+    /// Runs a BM25 full-text query over <paramref name="table"/> (aliased <paramref name="alias"/>): works out the
+    /// query's terms (<see cref="QueryTermsAsync"/>) and reads the collection statistics
+    /// (<see cref="StatisticsAsync"/>), then <paramref name="build"/> writes the statement from the
+    /// <see cref="Bm25Sql"/> parts. Everything runs in one repeatable-read snapshot, so the statistics are exactly
+    /// those of the rows scored, whatever is written concurrently.
     /// </summary>
-    private string TsQuery(SqlBuilder b, string query, IReadOnlyList<string>? groupIds, string table)
+    private Task<IReadOnlyList<T>> FulltextAsync<T>(
+        string query,
+        IReadOnlyList<string>? groupIds,
+        string table,
+        string alias,
+        Action<SqlBuilder, Bm25Sql> build,
+        Func<NpgsqlDataReader, T> map,
+        int limit,
+        CancellationToken ct) =>
+        core.WithConnectionAsync<IReadOnlyList<T>>(
+            async connection =>
+            {
+                await core.CheckSearchStatisticsAsync(connection, ct).ConfigureAwait(false);
+                await using var transaction = await connection
+                    .BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, ct)
+                    .ConfigureAwait(false);
+                var terms = await QueryTermsAsync(connection, query, groupIds, table, ct).ConfigureAwait(false);
+                var distinct = terms.SelectMany(q => q.Terms).Distinct(StringComparer.Ordinal).ToList();
+                if (distinct.Count == 0)
+                {
+                    return [];
+                }
+
+                var statistics = await StatisticsAsync(connection, table, distinct, ct).ConfigureAwait(false);
+
+                // First, if it can settle the answer, a cheap pass over the rows with the query's rarest terms only.
+                List<(T Row, double Score)>? rows = null;
+                var prune = Prune(terms, statistics);
+                if (prune is not null)
+                {
+                    rows = await RunAsync(prune.Value.Terms).ConfigureAwait(false);
+                    if (rows is not null && (rows.Count < limit || rows[^1].Score <= prune.Value.Bound))
+                    {
+                        rows = null;
+                    }
+                }
+
+                rows ??= await RunAsync(null).ConfigureAwait(false);
+
+                await transaction.CommitAsync(ct).ConfigureAwait(false);
+                return rows is null ? [] : rows.Select(r => r.Row).ToList();
+
+                async Task<List<(T Row, double Score)>?> RunAsync(IReadOnlySet<string>? candidates)
+                {
+                    var b = new SqlBuilder();
+                    var bm25 = Bm25(b, terms, statistics, candidates, groupIds, table, alias);
+                    if (bm25 is null)
+                    {
+                        return null;
+                    }
+
+                    build(b, bm25);
+                    await using var command = b.ToCommand(connection);
+                    return await DriverCore.ReadListAsync(command, r => (map(r), r.GetDouble(r.FieldCount - 1)), ct)
+                        .ConfigureAwait(false);
+                }
+            },
+            ct);
+
+    /// <summary>
+    /// The query's terms under each text search configuration in play, in query order with repeats: the searched
+    /// groups' configurations, or, for every group, each configuration the options name (or, with a selector, each
+    /// one the table holds). Under <c>simple</c> they are the tokenizer's terms; under a language configuration each
+    /// is normalised exactly as the rows' terms were.
+    /// </summary>
+    private async Task<List<(string Config, List<string> Terms)>> QueryTermsAsync(
+        NpgsqlConnection connection,
+        string query,
+        IReadOnlyList<string>? groupIds,
+        string table,
+        CancellationToken ct)
     {
-        string configs;
+        IEnumerable<string> configs;
         if (groupIds is not null)
         {
-            var names = groupIds.Select(core.Options.ResolveTextSearchConfig).Distinct().ToArray();
-            configs = $"SELECT unnest(CAST({b.TextArray(names)} AS regconfig[])) AS cfg";
+            configs = groupIds.Select(core.Options.ResolveTextSearchConfig);
         }
         else if (core.Options.TextSearchConfigSelector is null)
         {
-            var names = new[] { core.Options.DefaultTextSearchConfig }
-                .Concat(core.Options.TextSearchConfigs?.Values ?? [])
-                .Distinct()
-                .ToArray();
-            configs = $"SELECT unnest(CAST({b.TextArray(names)} AS regconfig[])) AS cfg";
+            configs = new[] { core.Options.DefaultTextSearchConfig }.Concat(core.Options.TextSearchConfigs?.Values ?? []);
         }
         else
         {
-            configs = $"SELECT DISTINCT text_search_config AS cfg FROM {N.Table(table)}";
+            await using var command = new NpgsqlCommand(
+                $"SELECT DISTINCT text_search_config::text FROM {N.Table(table)}",
+                connection);
+            configs = await DriverCore.ReadListAsync(command, r => r.GetString(0), ct).ConfigureAwait(false);
         }
 
-        var text = b.Text(query);
-        const string quoted = "('''' || replace(replace(lexeme, '\\', '\\\\'), '''', '''''') || '''')";
-        return $"SELECT c.cfg, string_agg({quoted}, ' | ')::tsquery AS q, array_agg({quoted}::tsquery) AS terms "
-            + $"FROM ({configs}) AS c CROSS JOIN LATERAL unnest(tsvector_to_array(to_tsvector(c.cfg, {text}))) "
-            + "AS lexeme GROUP BY c.cfg";
+        var tokens = FullText.Tokenize(query);
+        var distinct = configs.Select(SearchIndex.CanonicalConfig).Distinct(StringComparer.Ordinal).ToList();
+        var lexemes = await SearchIndex.NormaliseAsync(
+            connection,
+            distinct.Where(c => !SearchIndex.IsSimple(c)).SelectMany(c => tokens.Select(t => (c, t))),
+            ct).ConfigureAwait(false);
+        return distinct
+            .Select(c => (c, SearchIndex.IsSimple(c) ? tokens : tokens.SelectMany(t => lexemes[(c, t)]).ToList()))
+            .ToList();
     }
 
     /// <summary>
-    /// The relevance of a row: how many distinct query terms it contains, then <c>ts_rank</c> with length
-    /// normalisation. Matching more terms comes first, much as BM25's inverse document frequency rewards coverage.
+    /// The collection statistics of <paramref name="table"/> for the given terms, over the whole table (every group),
+    /// as a Lucene index keeps them: per field, how many rows have any term and their total length, from the table
+    /// the statistics triggers keep (see <c>SearchStatisticsSql</c>); and per term and field, how many rows contain
+    /// the term, counted from the GIN index on <c>search_keys</c>. One round trip.
     /// </summary>
-    private static string Rank(string alias) =>
-        $"(SELECT count(*) FROM unnest(tq.terms) AS term WHERE {alias}.search_vector @@ term) DESC, "
-        + $"ts_rank({alias}.search_vector, tq.q, 1)";
+    private async Task<Bm25Statistics> StatisticsAsync(
+        NpgsqlConnection connection,
+        string table,
+        List<string> terms,
+        CancellationToken ct)
+    {
+        var fields = Enumerable.Range(1, SearchIndex.Columns[table].Length).ToArray();
+        var collection = string.Join(", ", fields.Select(f =>
+            $"coalesce(sum(docs{f}), 0)::bigint, coalesce(sum(length{f}), 0)::bigint"));
+        await using var batch = new NpgsqlBatch(connection);
+        DriverCore.AddCommand(
+            batch,
+            $"SELECT {collection} FROM {N.Table(SearchStatisticsSql.Table)} WHERE table_name = $1",
+            Params.Text(N.Name(table)));
+        DriverCore.AddCommand(
+            batch,
+            // Answered from the GIN index on search_keys: no row value is read.
+            $"SELECT (SELECT count(*) FROM {N.Table(table)} AS s WHERE s.search_keys @> ARRAY[k.key]) "
+            + "FROM unnest($1::text[]) WITH ORDINALITY AS k(key, i) ORDER BY k.i",
+            Params.TextArray(terms.SelectMany(term => fields.Select(f => SearchIndex.Key(f - 1, term)))));
+        await using var reader = await batch.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        await reader.ReadAsync(ct).ConfigureAwait(false);
+        var docCount = fields.Select(f => reader.GetInt64((2 * f) - 2)).ToArray();
+        var totalLength = fields.Select(f => reader.GetInt64((2 * f) - 1)).ToArray();
+        await reader.NextResultAsync(ct).ConfigureAwait(false);
+        var documentFrequency = new Dictionary<string, long[]>(StringComparer.Ordinal);
+        foreach (var term in terms)
+        {
+            var counts = new long[fields.Length];
+            foreach (var f in fields)
+            {
+                await reader.ReadAsync(ct).ConfigureAwait(false);
+                counts[f - 1] = reader.GetInt64(0);
+            }
+
+            documentFrequency[term] = counts;
+        }
+
+        return new Bm25Statistics(docCount, totalLength, documentFrequency);
+    }
+
+    /// <summary>
+    /// The parts of a BM25 full-text statement, or <see langword="null"/> when no row can match:
+    /// <see cref="Bm25Sql.From"/>, the candidate rows (any query term, found through the GIN index on
+    /// <c>search_keys</c>, in the searched groups) under the table's alias, with their score;
+    /// <see cref="Bm25Sql.Score"/>, the score column; and <see cref="Bm25Sql.Match"/>, the condition keeping the
+    /// rows that contain a query term under their own configuration.
+    /// </summary>
+    /// <remarks>
+    /// The score is Lucene's BM25 as the in-memory driver computes it: for each field, then each query term (repeats
+    /// included), <c>idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * length / averageLength))</c> with
+    /// <c>idf = ln(1 + (N - df + 0.5) / (df + 0.5))</c>, added up in that order. The inverse document frequencies and
+    /// average lengths are computed here, in .NET, with the in-memory driver's expressions, and sent as parameters;
+    /// PostgreSQL does the rest with the same floating-point operations in the same order (a term a row lacks adds
+    /// exactly zero), so scores, and so ties, come out bit for bit the same.
+    /// </remarks>
+    private Bm25Sql? Bm25(
+        SqlBuilder b,
+        List<(string Config, List<string> Terms)> terms,
+        Bm25Statistics statistics,
+        IReadOnlySet<string>? candidates,
+        IReadOnlyList<string>? groupIds,
+        string table,
+        string alias)
+    {
+        var fieldCount = SearchIndex.Columns[table].Length;
+        var fields = Enumerable.Range(0, fieldCount).ToArray();
+
+        // The (term, field) pairs some row has; any other pair adds nothing to any score.
+        var present = statistics.DocumentFrequency
+            .Where(t => t.Value.Any(df => df > 0))
+            .Select((t, i) => (Term: t.Key, Index: i + 1, Fields: fields.Where(f => t.Value[f] > 0).ToArray()))
+            .ToDictionary(t => t.Term, StringComparer.Ordinal);
+        if (present.Count == 0)
+        {
+            return null;
+        }
+
+        var k1 = b.Param(FullText.K1, NpgsqlDbType.Double);
+        var k1Plus1 = b.Param(FullText.K1 + 1, NpgsqlDbType.Double);
+        var oneMinusB = b.Param(1 - FullText.B, NpgsqlDbType.Double);
+        var bp = b.Param(FullText.B, NpgsqlDbType.Double);
+        var average = fields
+            .Select(f => statistics.DocCount[f] > 0
+                ? b.Param((double)statistics.TotalLength[f] / statistics.DocCount[f], NpgsqlDbType.Double)
+                : null)
+            .ToArray();
+        var idf = new Dictionary<(string Term, int Field), string>();
+        foreach (var (term, (_, _, termFields)) in present)
+        {
+            foreach (var f in termFields)
+            {
+                var n = statistics.DocCount[f];
+                var df = statistics.DocumentFrequency[term][f];
+                idf[(term, f)] = b.Param(Math.Log(1 + ((n - df + 0.5) / (df + 0.5))), NpgsqlDbType.Double);
+            }
+        }
+
+        var cases = string.Concat(terms.Select(q =>
+        {
+            var sum = new List<string> { "0::float8" };
+            foreach (var f in fields)
+            {
+                foreach (var term in q.Terms)
+                {
+                    if (present.TryGetValue(term, out var p) && p.Fields.Contains(f))
+                    {
+                        var tf = $"x.bm_t{p.Index}_{f}";
+                        sum.Add($"coalesce({idf[(term, f)]} * ({tf} * {k1Plus1}) / ({tf} + ({k1} * ({oneMinusB} + "
+                            + $"({bp} * x.bm_len{f} / {average[f]})))), 0)");
+                    }
+                }
+            }
+
+            return sum.Count == 1 ? "" : $" WHEN CAST({b.Text(q.Config)} AS regconfig) THEN {string.Join(" + ", sum)}";
+        }));
+        if (cases.Length == 0)
+        {
+            return null;
+        }
+
+        // Nested derived tables, each fenced with OFFSET 0 so that the planner neither repeats work in every use nor
+        // caches it: each candidate's term map is decompressed once (jsonb || '{}' returns it detoasted), its query
+        // terms' entries are looked up once, its frequencies and lengths decoded once, and its score computed once.
+        var termColumns = string.Join(", ", present.Values.Select(p =>
+            $"s1.bm_terms -> {b.Text(p.Term)} AS bm_t{p.Index}"));
+        var valueColumns = string.Join(", ", present.Values.SelectMany(p => p.Fields.Select(f =>
+                $"{SearchIndex.FrequencySql($"tf.bm_t{p.Index}", f)}::float8 AS bm_t{p.Index}_{f}"))
+            .Concat(fields.Select(f => $"tf.search_lengths[{f + 1}]::float8 AS bm_len{f}")));
+        var keys = present.Values
+            .Where(p => candidates is null || candidates.Contains(p.Term))
+            .SelectMany(p => p.Fields.Select(f => SearchIndex.Key(f, p.Term)));
+        var groups = groupIds is null ? "" : $" AND s.group_id = ANY({b.TextArray(groupIds)})";
+        var where = $"WHERE s.search_keys && {b.TextArray(keys)}{groups}";
+        string Scored(bool wide) =>
+            $"(SELECT {(wide ? "x.*" : "x.uuid")}, CASE x.text_search_config{cases} END AS bm_score FROM ("
+            + $"SELECT {(wide ? "tf.*" : "tf.uuid, tf.text_search_config")}, {valueColumns} FROM ("
+            + $"SELECT {(wide ? "s1.*" : "s1.uuid, s1.text_search_config, s1.search_lengths")}, {termColumns} FROM ("
+            + $"SELECT {(wide ? "s.*" : "s.uuid, s.text_search_config, s.search_lengths")}, "
+            + $"s.search_terms || '{{}}'::jsonb AS bm_terms FROM {N.Table(table)} AS s {where} OFFSET 0) AS s1 "
+            + "OFFSET 0) AS tf OFFSET 0) AS x OFFSET 0)";
+        return new Bm25Sql(
+            $"{Scored(wide: true)} AS {alias}",
+            $"{alias}.bm_score",
+            $"{alias}.bm_score > 0",
+            (columns, limit) =>
+                // Without filters on the records, the best ids are picked from narrow rows first, then joined.
+                $"SELECT {columns}, top.bm_score FROM (SELECT sc.uuid, sc.bm_score FROM {Scored(wide: false)} AS sc "
+                + $"WHERE sc.bm_score > 0 ORDER BY sc.bm_score DESC, sc.uuid LIMIT {limit}) AS top "
+                + $"JOIN {N.Table(table)} AS {alias} ON {alias}.uuid = top.uuid ORDER BY top.bm_score DESC, top.uuid");
+    }
+
+    /// <summary>
+    /// Lucene's MaxScore idea, for queries mixing rare and common terms: a term adds less than
+    /// <c>idf * (k1 + 1)</c> per field and occurrence in the query, however often a row repeats it. Taking the query's
+    /// highest-scoring terms first, while the rows containing them stay few, a row with none of them scores below
+    /// <c>Bound</c>, the sum of the other terms' maxima. So if the rows containing one of <c>Terms</c> already give
+    /// <c>limit</c> results scoring above <c>Bound</c>, those are the answer, exactly as a full pass would rank them,
+    /// and the many rows holding only common terms are never read. Returns <see langword="null"/> when no split is
+    /// worth trying (one configuration only).
+    /// </summary>
+    private static (IReadOnlySet<string> Terms, double Bound)? Prune(
+        List<(string Config, List<string> Terms)> terms,
+        Bm25Statistics statistics)
+    {
+        var withTerms = terms.Where(q => q.Terms.Count > 0).ToList();
+        if (withTerms.Count != 1)
+        {
+            return null;
+        }
+
+        var ranked = withTerms[0].Terms
+            .GroupBy(t => t, StringComparer.Ordinal)
+            .Select(g =>
+            {
+                var df = statistics.DocumentFrequency[g.Key];
+                var bound = 0.0;
+                for (var f = 0; f < df.Length; f++)
+                {
+                    if (df[f] > 0)
+                    {
+                        var n = statistics.DocCount[f];
+                        bound += Math.Log(1 + ((n - df[f] + 0.5) / (df[f] + 0.5))) * (FullText.K1 + 1);
+                    }
+                }
+
+                return (Term: g.Key, Bound: bound * g.Count(), Rows: df.Sum());
+            })
+            .Where(t => t.Rows > 0)
+            .OrderByDescending(t => t.Bound)
+            .ThenBy(t => t.Rows)
+            .ToList();
+
+        // Worth it only when a full pass would read many rows, and the first pass reads a quarter of them at most.
+        var fullPass = Math.Min(statistics.DocCount.Max(), ranked.Sum(t => t.Rows));
+        if (fullPass < 4_000)
+        {
+            return null;
+        }
+
+        var budget = fullPass / 4;
+        var chosen = new HashSet<string>(StringComparer.Ordinal);
+        var rows = 0L;
+        foreach (var term in ranked)
+        {
+            if (rows + term.Rows > budget)
+            {
+                break;
+            }
+
+            rows += term.Rows;
+            chosen.Add(term.Term);
+        }
+
+        if (chosen.Count == 0 || chosen.Count == ranked.Count)
+        {
+            return null;
+        }
+
+        // A margin far above floating-point rounding keeps the bound strict.
+        var rest = ranked.Where(t => !chosen.Contains(t.Term)).Sum(t => t.Bound);
+        return (chosen, (rest * (1 + 1e-9)) + 1e-9);
+    }
+
+    private sealed record Bm25Sql(string From, string Score, string Match, Func<string, string, string> TopK);
+
+    private sealed record Bm25Statistics(
+        long[] DocCount,
+        long[] TotalLength,
+        Dictionary<string, long[]> DocumentFrequency);
 
     private void AppendSimilarity(
         SqlBuilder b,

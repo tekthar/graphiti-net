@@ -144,7 +144,7 @@ Next:
 
 - PostgreSQL search module:
   - cosine similarity with pgvector
-  - full-text search with `tsvector`, and ParadeDB `pg_search` BM25 where the host allows it
+  - full-text search ranked with Lucene's BM25 in plain SQL (no extension), as upstream's Neo4j indexes
   - breadth-first graph search as a recursive query, capped at 3 hops (`MAX_SEARCH_DEPTH`)
 - Rerankers: reciprocal rank fusion, maximal marginal relevance, node distance, episode mentions, cross-encoder.
 - Search filters, config recipes (`search_config_recipes.py`), and the simple and advanced search APIs.

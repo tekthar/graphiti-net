@@ -36,7 +36,7 @@ Packages: `GraphitiNet` and `GraphitiNet.PostgreSql`, for .NET 10.
 - **Providers**: OpenAI, Azure OpenAI and OpenAI-compatible LLM, embedder and reranker clients; adapters for any
   Microsoft.Extensions.AI `IChatClient` and `IEmbeddingGenerator`; token usage tracking.
 - **Storage**: the in-memory driver (BM25 keyword ranking, save to and load from JSON) and the PostgreSQL driver
-  (EF Core, pgvector, built-in full-text search, a text search language per group, tables in your own `DbContext`
+  (EF Core, pgvector, BM25 keyword search in SQL with the same tokenisation and ranking as Lucene, a text search language per group, tables in your own `DbContext`
   and migrations, schema name and table prefix). A driver conformance suite both pass.
 - **Utilities**: content chunking, community operations, OpenTelemetry-compatible tracing through `ActivitySource`.
 - **graphiti-net additions**, opt-in or additive: an episode access filter on search applied before the limit,
@@ -49,8 +49,6 @@ Packages: `GraphitiNet` and `GraphitiNet.PostgreSql`, for .NET 10.
 
 ### Known gaps
 
-- On PostgreSQL, the `customer-support` parity replay has one fact-resolution step that gets a different candidate
-  set than upstream; the test is skipped and tracked.
 - Benchmarks so far: LongMemEval graph building against Python Graphiti (36 and 100 messages, within upstream's
   run-to-run variation). LongMemEval QA, DMR and LoCoMo runs come before 1.0.
 - The default LLM model is upstream's, which may not be available on every OpenAI account; set a model in

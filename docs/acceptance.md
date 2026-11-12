@@ -96,7 +96,7 @@ Notes:
 | Criterion | Test | In memory | PostgreSQL |
 | --- | --- | --- | --- |
 | One test in CI goes from episode text to a search result through real PostgreSQL, with a fake model. It adds three episodes, one of which contradicts another, then finds the current fact and the fact that was closed. | `Issue2Tests.Episode_text_to_search_result_finds_the_current_fact_and_the_closed_fact` | pass | pass |
-| CI runs the customer-support dataset through the port on recorded answers and compares the result with upstream's. | `GraphitiNet.Parity.Tests`: `ParityRunTests.Ingestion_matches_upstream_on_recorded_answers("customer-support")` | pass | known gap, skipped (see below) |
+| CI runs the customer-support dataset through the port on recorded answers and compares the result with upstream's. | `GraphitiNet.Parity.Tests`: `ParityRunTests.Ingestion_matches_upstream_on_recorded_answers("customer-support")` | pass | pass |
 | The Arabic dataset runs through parity, on recorded answers. | `ParityRunTests.Ingestion_matches_upstream_on_recorded_answers("arabic")` and `ParityRunTests.Ingestion_on_postgresql_matches_upstream_on_recorded_answers("arabic")` | pass | pass |
 
 How the tests check these:
@@ -107,8 +107,5 @@ How the tests check these:
   - London is current: valid from June, with no `InvalidAt` or `ExpiredAt`;
   - Paris is closed: valid from January, `InvalidAt` set to June, `ExpiredAt` set;
   - both facts belong to one Alice entity.
-- **Customer-support on PostgreSQL.** This run is skipped. PostgreSQL ranks keyword matches with `ts_rank`, not
-  BM25, so in one fact-resolution step a different fact makes the candidate cut-off than on Neo4j. The criterion as
-  written (the dataset runs in CI and is compared with upstream) is met by the in-memory run. The PostgreSQL run is
-  an explicitly skipped test, `ParityRunTests.Ingestion_on_postgresql_matches_upstream_on_customer_support`, and
-  remains open.
+- **Customer-support on PostgreSQL.** `ParityRunTests.Ingestion_on_postgresql_matches_upstream_on_recorded_answers("customer-support")`
+  passes since the PostgreSQL driver ranks keyword search with BM25, as upstream's Lucene does.

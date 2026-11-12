@@ -139,7 +139,7 @@ This works because Graphiti's queries are shallow. Upstream caps graph search at
 | --- | --- | --- |
 | Episodes, entities, facts, communities | Tables with foreign keys | Same |
 | Vector search | pgvector with HNSW indexes, through `Pgvector.EntityFrameworkCore` | Native `vector` type and `VectorDistance` in EF Core 10 |
-| Keyword search | Built-in full-text search (`tsvector`); a BM25 extension such as ParadeDB `pg_search` where the host allows it | Full-text index |
+| Keyword search | BM25 in SQL over terms the driver tokenises like Lucene (see [postgresql.md](postgresql.md)) | BM25 over a driver-maintained keyword index (see [sqlserver.md](sqlserver.md)) |
 | Graph search (up to 3 hops) | Recursive SQL query | Recursive SQL query |
 | Group id isolation | A group id column and an EF Core global query filter; optionally row-level security | Same |
 

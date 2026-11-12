@@ -29,7 +29,6 @@ it came from.
 | Storage: PostgreSQL + pgvector, SQL Server 2025 / Azure SQL, in memory | Works |
 | Providers: OpenAI, Azure OpenAI, OpenAI-compatible, any Microsoft.Extensions.AI client | Works |
 | `AddEpisodeBulkAsync`, with combined extraction by default | Works; replayed against a recorded upstream `add_episode_bulk` run on every commit |
-| PostgreSQL parity on the `customer-support` dataset | Known gap: one fact-resolution step gets a different candidate set (SQL Server and in memory match) |
 | Graph building against Python Graphiti on LongMemEval | 100 messages: within upstream's own run-to-run variation ([results](parity/results/2026-11-12-lme-graph-building.md)) |
 | LongMemEval QA, DMR and LoCoMo benchmarks | Before 1.0 |
 | Consumer requirements (AbpAgent, issues #1 and #2) | Every criterion tested on both drivers ([acceptance](docs/acceptance.md)) |
@@ -113,7 +112,7 @@ keep their names in `camelCase`.
 
 | Driver | Package | Use it for |
 | --- | --- | --- |
-| `PostgresDriver` | `GraphitiNet.PostgreSql` | Production. Tables in a PostgreSQL database you already run, through EF Core; pgvector for vectors, built-in full-text search. Can live in your own `DbContext` and migrations. See [docs/postgresql.md](docs/postgresql.md). |
+| `PostgresDriver` | `GraphitiNet.PostgreSql` | Production. Tables in a PostgreSQL database you already run, through EF Core; pgvector for vectors, BM25 keyword search in SQL. Can live in your own `DbContext` and migrations. See [docs/postgresql.md](docs/postgresql.md). |
 | `SqlServerDriver` | `GraphitiNet.SqlServer` | Production on SQL Server 2025 or Azure SQL, through EF Core; the native `vector` type for vectors, BM25 keyword ranking as upstream's Lucene (no full-text search needed). Can live in your own `DbContext` and migrations. See [docs/sqlserver.md](docs/sqlserver.md). |
 | `InMemoryGraphDriver` | `GraphitiNet` | Zero-install: tests, demos, small apps. BM25 keyword ranking. Can save to and load from a JSON file. |
 
@@ -150,8 +149,8 @@ Opt-in or additive. With the defaults, behaviour matches upstream. Details in
 Python Graphiti on the same input is the definition of correct. See [parity/README.md](parity/README.md).
 
 - **Replay on every commit.** Upstream's prompts and model answers are recorded once; the port replays them and must
-  produce the same entities, facts, validity dates and invalidations. In memory and on SQL Server, both datasets
-  match; on PostgreSQL, `arabic` matches and `customer-support` has one known gap.
+  produce the same entities, facts, validity dates and invalidations. Every dataset matches on every driver: in memory, on
+  PostgreSQL and on SQL Server.
 - **Graph building on LongMemEval** with live models, judged by an LLM with upstream's own evaluation: graphiti-net
   scored 0.472 against a Python Graphiti baseline, where a second Python Graphiti run scored 0.361 and a graph with
   every fact removed 0.111. A small sample (36 messages); see
