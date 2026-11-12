@@ -53,6 +53,12 @@ conformance suite checks:
   with no group ids it matches nothing, and the group ids do not further restrict the saga's episodes.
 - `GetBySagaAsync`: the saga's episodes by `CreatedAt`, then `ValidAt`, ascending; `createdAfter` is exclusive.
 - `SagaNodeOps.GetByNameAsync`: exact, case-sensitive name within one group.
+- `EntityNodeOps.GetByNamesAsync`: entities whose name equals one of the names exactly (case-sensitive) in any of the
+  groups; empty names or groups return nothing. The default implementation scans `GetByGroupIdsAsync`; override it
+  with an indexed lookup.
+- `EntityNodeOps.GetByAttributeValuesAsync` (optional): entities in one group whose attributes equal all the given
+  values, optionally with given labels. The default throws `NotSupportedException`, as upstream's drivers do not
+  implement it either; entity deduplication then skips the identity-property lookup.
 - `GetPreviousEpisodeUuidAsync`: the saga's latest episode other than the current one, by `ValidAt` then `CreatedAt`,
   both descending.
 

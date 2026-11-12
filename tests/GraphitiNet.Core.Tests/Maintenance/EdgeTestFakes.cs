@@ -26,8 +26,8 @@ internal sealed class FakeLlmClient : LLMClient
     private readonly Lock _lock = new();
     private readonly Dictionary<string, Func<LlmCall, object?>> _handlers = new(StringComparer.Ordinal);
 
-    public FakeLlmClient()
-        : base(new LLMConfig())
+    public FakeLlmClient(int maxTokens = LLMConfig.DefaultMaxTokens)
+        : base(new LLMConfig(maxTokens: maxTokens))
     {
     }
 
@@ -43,6 +43,13 @@ internal sealed class FakeLlmClient : LLMClient
 
     /// <summary>Answers <paramref name="promptName"/> with <paramref name="response"/> serialised as JSON.</summary>
     public FakeLlmClient On(string promptName, object? response) => On(promptName, _ => response);
+
+    /// <summary>Answers <paramref name="promptName"/> with the JSON text <paramref name="json"/>.</summary>
+    public FakeLlmClient Respond(string promptName, string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return On(promptName, document.RootElement.Clone());
+    }
 
     public FakeLlmClient On(string promptName, Func<LlmCall, object?> handler)
     {

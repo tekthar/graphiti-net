@@ -285,6 +285,25 @@ internal sealed class InMemoryEntityNodeOperations(InMemoryStore store)
 
     protected override EntityNode ToResult(EntityNode stored) => RecordCopies.Copy(stored, includeEmbedding: false);
 
+    public Task<IReadOnlyList<EntityNode>> GetByNamesAsync(
+        IReadOnlyList<string> names,
+        IReadOnlyList<string> groupIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        ArgumentNullException.ThrowIfNull(groupIds);
+        cancellationToken.ThrowIfCancellationRequested();
+        var nameSet = names.Where(n => !string.IsNullOrEmpty(n)).ToHashSet(StringComparer.Ordinal);
+        var groupSet = groupIds.Where(g => !string.IsNullOrEmpty(g)).ToHashSet(StringComparer.Ordinal);
+        lock (Store.Gate)
+        {
+            IReadOnlyList<EntityNode> result = [.. Store.Entities.Values
+                .Where(n => groupSet.Contains(n.GroupId) && nameSet.Contains(n.Name))
+                .Select(ToResult)];
+            return Task.FromResult(result);
+        }
+    }
+
     public Task LoadEmbeddingsAsync(EntityNode node, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(node);

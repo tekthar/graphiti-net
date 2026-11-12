@@ -1033,7 +1033,7 @@ public static partial class EdgeOperations
             var model = edgeTypeCandidates is { Count: > 0 }
                 ? edgeTypeCandidates.GetValueOrDefault(extractedEdge.Name)
                 : null;
-            if (model is not null && EdgeAttributeMerge.FieldCount(model) != 0)
+            if (model is not null && EntityTypesUtils.GetFields(model).Count != 0)
             {
                 await ExtractEdgeAttributesAsync(clients, extractedEdge, episode, model, cancellationToken)
                     .ConfigureAwait(false);
@@ -1120,7 +1120,7 @@ public static partial class EdgeOperations
         var edgeModel = edgeTypeCandidates is { Count: > 0 }
             ? edgeTypeCandidates.GetValueOrDefault(resolvedEdge.Name)
             : null;
-        if (edgeModel is not null && EdgeAttributeMerge.FieldCount(edgeModel) != 0)
+        if (edgeModel is not null && EntityTypesUtils.GetFields(edgeModel).Count != 0)
         {
             await ExtractEdgeAttributesAsync(clients, resolvedEdge, episode, edgeModel, cancellationToken)
                 .ConfigureAwait(false);
@@ -1204,8 +1204,15 @@ public static partial class EdgeOperations
             modelSize: ModelSize.Small,
             attributeExtraction: true,
             cancellationToken: cancellationToken).ConfigureAwait(false);
-        var merged = EdgeAttributeMerge.ApplyCappedReplace(
-            EdgeAttributeMerge.ToAttributes(response), edgeModel, edge.Attributes);
+        var (merged, _) = AttributeUtils.ApplyCappedAttributes(
+            AttributeUtils.FromJsonResponse(response),
+            edgeModel,
+            new Dictionary<string, object?>(edge.Attributes, StringComparer.Ordinal),
+            AttributeMergeMode.Replace,
+            promptName: PromptNames.ExtractEdgesExtractAttributes,
+            entityUuid: edge.Uuid,
+            groupId: edge.GroupId,
+            logger: clients.Logger);
         edge.Attributes.Clear();
         foreach (var (key, value) in merged)
         {

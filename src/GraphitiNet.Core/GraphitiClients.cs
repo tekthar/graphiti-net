@@ -11,6 +11,8 @@ using GraphitiNet.Driver;
 using GraphitiNet.Embedder;
 using GraphitiNet.Llm;
 using GraphitiNet.Prompts;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GraphitiNet;
 
@@ -44,6 +46,9 @@ public sealed record GraphitiClients
     /// <summary>The cap on concurrent operations per gather (upstream <c>max_coroutines</c>); <see langword="null"/>
     /// uses <c>SEMAPHORE_LIMIT</c> or 20.</summary>
     public int? MaxCoroutines { get; init; }
+
+    /// <summary>Where the pipeline functions log (upstream's module loggers). Defaults to no logging.</summary>
+    public ILogger Logger { get; init; } = NullLogger.Instance;
 
     /// <summary>The LLM client a prompt runs on.</summary>
     public LLMClient ClientFor(string promptName) =>

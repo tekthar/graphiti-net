@@ -176,6 +176,60 @@ public interface IEntityNodeOperations : INodeOperations<EntityNode>
 
     /// <summary>Loads <see cref="EntityNode.NameEmbedding"/> for each node.</summary>
     Task LoadEmbeddingsBulkAsync(IReadOnlyList<EntityNode> nodes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Entities in any of <paramref name="groupIds"/> whose name equals one of <paramref name="names"/> exactly
+    /// (case-sensitive), as upstream's <c>EntityNode.get_by_names</c>. Empty names or groups return nothing. Order is
+    /// not specified. Entity deduplication uses it for exact-name candidates.
+    /// </summary>
+    /// <remarks>The default implementation pages through <see cref="IRecordOperations{T}.GetByGroupIdsAsync"/>;
+    /// backends should override it with an indexed lookup.</remarks>
+    async Task<IReadOnlyList<EntityNode>> GetByNamesAsync(
+        IReadOnlyList<string> names,
+        IReadOnlyList<string> groupIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        ArgumentNullException.ThrowIfNull(groupIds);
+        var nameSet = names.Where(n => !string.IsNullOrEmpty(n)).ToHashSet(StringComparer.Ordinal);
+        var groups = groupIds.Where(g => !string.IsNullOrEmpty(g)).Distinct(StringComparer.Ordinal).ToList();
+        if (nameSet.Count == 0 || groups.Count == 0)
+        {
+            return [];
+        }
+
+        const int pageSize = 1000;
+        var result = new List<EntityNode>();
+        string? cursor = null;
+        while (true)
+        {
+            var page = await GetByGroupIdsAsync(groups, pageSize, cursor, cancellationToken).ConfigureAwait(false);
+            result.AddRange(page.Where(n => nameSet.Contains(n.Name)));
+            if (page.Count < pageSize)
+            {
+                return result;
+            }
+
+            cursor = page[^1].Uuid;
+        }
+    }
+
+    /// <summary>
+    /// Up to <paramref name="limit"/> entities in <paramref name="groupId"/> whose <see cref="EntityNode.Attributes"/>
+    /// equal every given value and, if <paramref name="nodeLabels"/> is given, that carry those labels. Upstream's
+    /// optional <c>node_get_by_attribute_values</c>, used to find identity-property dedup candidates.
+    /// </summary>
+    /// <remarks>Optional, as upstream (none of upstream's bundled drivers implement it): the default throws
+    /// <see cref="NotSupportedException"/>, and deduplication then finds identity matches only among the name and
+    /// similarity candidates.</remarks>
+    /// <exception cref="NotSupportedException">The backend does not support the lookup.</exception>
+    Task<IReadOnlyList<EntityNode>> GetByAttributeValuesAsync(
+        string groupId,
+        IReadOnlyDictionary<string, object?> attributes,
+        IReadOnlyList<string>? nodeLabels = null,
+        int limit = 100,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This driver does not support looking up entities by attribute values.");
 }
 
 /// <summary>Community storage.</summary>
