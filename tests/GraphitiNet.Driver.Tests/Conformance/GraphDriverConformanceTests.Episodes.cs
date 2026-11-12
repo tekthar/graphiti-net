@@ -8,7 +8,7 @@ namespace GraphitiNet.Driver.Tests.Conformance;
 // Episode retrieval and saga lookups.
 public abstract partial class GraphDriverConformanceTests
 {
-    [Fact]
+    [SkippableFact]
     public async Task Retrieve_episodes_returns_the_latest_n_before_the_reference_time_oldest_first()
     {
         var group = NewGroup();
@@ -35,7 +35,7 @@ public abstract partial class GraphDriverConformanceTests
             Ids(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(sameInstant, lastN: 2, groupIds: [group])));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Retrieve_episodes_filters_by_group_and_source()
     {
         var group = NewGroup();
@@ -64,7 +64,7 @@ public abstract partial class GraphDriverConformanceTests
             Day(9), lastN: 10, groupIds: [group], source: EpisodeType.FactTriple));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Retrieve_episodes_filters_by_saga_name()
     {
         var group = NewGroup();
@@ -121,7 +121,7 @@ public abstract partial class GraphDriverConformanceTests
             Day(9), lastN: 10, groupIds: [group], saga: "no such saga " + UniqueWord()));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Retrieve_episodes_with_no_group_ids_searches_every_group()
     {
         if (!IsIsolated)
@@ -139,7 +139,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Equal(Ids([a, b]), Ids(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(Day(9), groupIds: [])));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Get_by_saga_returns_the_saga_episodes_oldest_first()
     {
         var group = NewGroup();
@@ -176,7 +176,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.EpisodeNodeOps.GetBySagaAsync(Guid.NewGuid().ToString()));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Sagas_can_be_found_by_name_within_a_group()
     {
         var group = NewGroup();
@@ -195,7 +195,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Null(await Driver.SagaNodeOps.GetByNameAsync("Unknown", group));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Previous_saga_episode_is_the_latest_other_episode()
     {
         var group = NewGroup();

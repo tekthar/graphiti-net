@@ -40,7 +40,7 @@ public abstract partial class GraphDriverConformanceTests
         + (await Driver.HasEpisodeEdgeOps.GetByGroupIdsAsync([group])).Count
         + (await Driver.NextEpisodeEdgeOps.GetByGroupIdsAsync([group])).Count;
 
-    [Fact]
+    [SkippableFact]
     public async Task Clear_data_removes_every_record_in_the_given_groups()
     {
         var group = await SaveOneOfEverything(NewGroup());
@@ -57,7 +57,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Equal(11, await CountRecords(kept));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Clear_data_with_no_groups_removes_everything()
     {
         if (!IsIsolated)
@@ -75,7 +75,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.GraphOps.GetEntityGroupIdsAsync());
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Build_indices_and_constraints_is_repeatable_and_keeps_data()
     {
         var group = await SaveOneOfEverything(NewGroup());
@@ -84,7 +84,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Equal(11, await CountRecords(group));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_projection_counts_facts_between_neighbours_in_the_group()
     {
         var group = NewGroup();
@@ -114,7 +114,7 @@ public abstract partial class GraphDriverConformanceTests
                 actual.OrderBy(n => n.NodeUuid, StringComparer.Ordinal));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_group_ids_are_the_distinct_groups_with_entities()
     {
         var group = NewGroup();
@@ -135,7 +135,7 @@ public abstract partial class GraphDriverConformanceTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Remove_communities_removes_communities_and_memberships_in_the_given_groups()
     {
         var group = NewGroup();
@@ -157,7 +157,7 @@ public abstract partial class GraphDriverConformanceTests
         await Driver.EntityNodeOps.GetByUuidAsync(alice.Uuid);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Remove_communities_with_no_or_empty_groups_removes_every_community()
     {
         if (!IsIsolated)
@@ -183,7 +183,7 @@ public abstract partial class GraphDriverConformanceTests
         await Driver.EntityNodeOps.GetByUuidAsync(alice.Uuid);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Mentioned_nodes_are_the_distinct_entities_the_episodes_mention()
     {
         var group = NewGroup();
@@ -205,7 +205,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.GraphOps.GetMentionedNodesAsync([]));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Communities_by_nodes_are_the_distinct_communities_of_those_members()
     {
         var group = NewGroup();
@@ -227,7 +227,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.GraphOps.GetCommunitiesByNodesAsync([]));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Neighbor_communities_appear_once_per_fact_and_membership()
     {
         var group = NewGroup();
@@ -256,7 +256,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.GraphOps.GetNeighborCommunitiesAsync(Guid.NewGuid().ToString()));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Episode_mentions_are_counted_per_entity()
     {
         var group = NewGroup();

@@ -27,6 +27,9 @@ public sealed class PostgresSharedConformanceTests : GraphDriverConformanceTests
     protected override int EmbeddingDimension => PostgresGraphOptions.DefaultEmbeddingDimension;
 
     /// <inheritdoc />
+    protected override string? SkipReason => TestDatabase.SkipReason;
+
+    /// <inheritdoc />
     public override Task InitializeAsync() =>
         TestDatabase.SkipReason is null ? base.InitializeAsync() : Task.CompletedTask;
 
@@ -44,6 +47,9 @@ public sealed class PostgresIsolatedConformanceTests : GraphDriverConformanceTes
 
     /// <inheritdoc />
     protected override int EmbeddingDimension => 4;
+
+    /// <inheritdoc />
+    protected override string? SkipReason => TestDatabase.SkipReason;
 
     /// <inheritdoc />
     public override Task InitializeAsync() =>

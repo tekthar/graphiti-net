@@ -151,7 +151,7 @@ public abstract partial class GraphDriverConformanceTests
 
     private static string NextName(string prefix) => $"{prefix} {Interlocked.Increment(ref s_nameCounter)}";
 
-    [Fact]
+    [SkippableFact]
     public Task Episode_nodes_support_record_operations() => CheckRecordOperations(
         Driver.EpisodeNodeOps,
         group => Task.FromResult(Episode(group, NextName("episode"), validAt: Day(2))),
@@ -171,7 +171,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertEpisode,
         isNode: true);
 
-    [Fact]
+    [SkippableFact]
     public Task Entity_nodes_support_record_operations() => CheckRecordOperations(
         Driver.EntityNodeOps,
         group => Task.FromResult(Entity(group, NextName("entity"), summary: "summary", labels: ["Person"])),
@@ -188,7 +188,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertEntity,
         isNode: true);
 
-    [Fact]
+    [SkippableFact]
     public Task Community_nodes_support_record_operations() => CheckRecordOperations(
         Driver.CommunityNodeOps,
         group => Task.FromResult(Community(group, NextName("community"), summary: "summary")),
@@ -203,7 +203,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertCommunity,
         isNode: true);
 
-    [Fact]
+    [SkippableFact]
     public Task Saga_nodes_support_record_operations() => CheckRecordOperations(
         Driver.SagaNodeOps,
         group => Task.FromResult(Saga(group, NextName("saga"))),
@@ -222,7 +222,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertSaga,
         isNode: true);
 
-    [Fact]
+    [SkippableFact]
     public Task Episodic_edges_support_record_operations() => CheckRecordOperations(
         Driver.EpisodicEdgeOps,
         async group =>
@@ -244,7 +244,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertPlainEdge,
         isNode: false);
 
-    [Fact]
+    [SkippableFact]
     public Task Entity_edges_support_record_operations() => CheckRecordOperations(
         Driver.EntityEdgeOps,
         async group =>
@@ -273,7 +273,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertFact,
         isNode: false);
 
-    [Fact]
+    [SkippableFact]
     public Task Community_edges_support_record_operations() => CheckRecordOperations(
         Driver.CommunityEdgeOps,
         async group =>
@@ -295,7 +295,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertPlainEdge,
         isNode: false);
 
-    [Fact]
+    [SkippableFact]
     public Task Has_episode_edges_support_record_operations() => CheckRecordOperations(
         Driver.HasEpisodeEdgeOps,
         async group =>
@@ -317,7 +317,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertPlainEdge,
         isNode: false);
 
-    [Fact]
+    [SkippableFact]
     public Task Next_episode_edges_support_record_operations() => CheckRecordOperations(
         Driver.NextEpisodeEdgeOps,
         async group =>
@@ -338,7 +338,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertPlainEdge,
         isNode: false);
 
-    [Fact]
+    [SkippableFact]
     public async Task Operations_only_see_their_own_record_type()
     {
         var group = NewGroup();
@@ -385,7 +385,7 @@ public abstract partial class GraphDriverConformanceTests
         },
     };
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_nodes_round_trip_every_field()
     {
         var group = NewGroup();
@@ -410,7 +410,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertEntity(node, Assert.Single(await Driver.EntityNodeOps.GetByGroupIdsAsync([group])));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_nodes_with_no_labels_or_attributes_round_trip()
     {
         var group = NewGroup();
@@ -423,7 +423,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Equal(["Entity"], loaded.Labels);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_edges_round_trip_every_field()
     {
         var group = NewGroup();
@@ -466,7 +466,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(loadedOpen.Attributes);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Episodes_round_trip_every_field_and_source_type()
     {
         var group = NewGroup();
@@ -499,7 +499,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(plain.EntityEdges);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Communities_and_sagas_round_trip_every_field()
     {
         var group = NewGroup();
@@ -529,7 +529,7 @@ public abstract partial class GraphDriverConformanceTests
 
     // ---------------------------------------------------------------- embeddings
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_embeddings_are_not_loaded_by_gets_but_by_load_embeddings()
     {
         var group = NewGroup();
@@ -563,7 +563,7 @@ public abstract partial class GraphDriverConformanceTests
         await Driver.EntityNodeOps.LoadEmbeddingsBulkAsync([]);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Fact_embeddings_are_not_loaded_by_gets_but_by_load_embeddings()
     {
         var group = NewGroup();
@@ -594,7 +594,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Equal(edge.FactEmbedding, bulk[0].FactEmbedding);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Community_embeddings_are_not_loaded_by_gets_but_by_load_name_embedding()
     {
         var group = NewGroup();
@@ -610,7 +610,7 @@ public abstract partial class GraphDriverConformanceTests
             () => Driver.CommunityNodeOps.LoadNameEmbeddingAsync(Community(group, "missing")));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Saving_replaces_the_stored_embedding()
     {
         var group = NewGroup();
@@ -626,7 +626,7 @@ public abstract partial class GraphDriverConformanceTests
 
     // ---------------------------------------------------------------- edge lookups
 
-    [Fact]
+    [SkippableFact]
     public async Task Facts_can_be_found_between_nodes_and_by_node()
     {
         var group = NewGroup();
@@ -651,7 +651,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.EntityEdgeOps.GetByNodeUuidAsync(Guid.NewGuid().ToString()));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Episodes_can_be_found_by_the_entities_they_mention()
     {
         var group = NewGroup();
@@ -673,7 +673,7 @@ public abstract partial class GraphDriverConformanceTests
 
     // ---------------------------------------------------------------- deletes
 
-    [Fact]
+    [SkippableFact]
     public async Task Deleting_an_entity_deletes_the_edges_that_touch_it()
     {
         var group = NewGroup();
@@ -714,7 +714,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.CommunityEdgeOps.GetByGroupIdsAsync([group]));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Deleting_an_episode_deletes_the_edges_that_touch_it()
     {
         var group = NewGroup();
@@ -747,7 +747,7 @@ public abstract partial class GraphDriverConformanceTests
         await Driver.SagaNodeOps.GetByUuidAsync(saga.Uuid);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Deleting_a_community_or_saga_deletes_its_edges_but_not_its_members()
     {
         var group = NewGroup();
@@ -773,7 +773,7 @@ public abstract partial class GraphDriverConformanceTests
         await Driver.EpisodeNodeOps.GetByUuidAsync(episode.Uuid);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Deleting_an_edge_leaves_its_nodes()
     {
         var group = NewGroup();
@@ -791,7 +791,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertSameEdges([other], await Driver.EntityEdgeOps.GetByGroupIdsAsync([group]));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Delete_by_group_removes_only_that_type_in_that_group()
     {
         var group = NewGroup();
@@ -842,7 +842,7 @@ public abstract partial class GraphDriverConformanceTests
 
     // ---------------------------------------------------------------- bulk ingestion
 
-    [Fact]
+    [SkippableFact]
     public async Task Add_nodes_and_edges_bulk_saves_everything_with_embeddings()
     {
         var group = NewGroup();

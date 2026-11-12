@@ -28,7 +28,21 @@ public abstract partial class GraphDriverConformanceTests : IAsyncLifetime
     private IGraphDriver? _driver;
 
     /// <summary>The driver under test.</summary>
-    protected IGraphDriver Driver => _driver ?? throw new InvalidOperationException("The driver is not created yet.");
+    protected IGraphDriver Driver
+    {
+        get
+        {
+            Skip.If(SkipReason is not null, SkipReason);
+            return _driver ?? throw new InvalidOperationException("The driver is not created yet.");
+        }
+    }
+
+    /// <summary>
+    /// Why the backend can't be tested here (for example, the database is unreachable), or <see langword="null"/>. When
+    /// set, every test is reported as skipped instead of failing; override <see cref="InitializeAsync"/> to avoid
+    /// creating the driver too.
+    /// </summary>
+    protected virtual string? SkipReason => null;
 
     /// <summary>
     /// Creates the driver for one test, with its schema in place (call

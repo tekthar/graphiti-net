@@ -13,7 +13,7 @@ public abstract partial class GraphDriverConformanceTests
 
     // ---------------------------------------------------------------- full-text
 
-    [Fact]
+    [SkippableFact]
     public async Task Node_fulltext_search_ranks_by_relevance_on_name_and_summary()
     {
         var group = NewGroup();
@@ -33,7 +33,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Single(await Driver.SearchOps.NodeFulltextSearchAsync("quokka zebra", NoFilter, [group], limit: 1));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Fact_fulltext_search_ranks_by_relevance_on_name_and_fact()
     {
         var group = NewGroup();
@@ -54,7 +54,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertSameEdges([nameOnly], await Driver.SearchOps.EdgeFulltextSearchAsync("chess", NoFilter, [group]));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Episode_fulltext_search_ranks_by_relevance_on_content_source_and_source_description()
     {
         var group = NewGroup();
@@ -76,7 +76,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertSameNodes([json], await Driver.SearchOps.EpisodeFulltextSearchAsync("json", NoFilter, [group]));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Community_fulltext_search_ranks_by_relevance_on_name()
     {
         var group = NewGroup();
@@ -91,7 +91,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Single(await Driver.SearchOps.CommunityFulltextSearchAsync("glacier hikers", [group], limit: 1));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Fulltext_search_restricts_to_the_given_groups()
     {
         var group = NewGroup();
@@ -128,7 +128,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.SearchOps.CommunityFulltextSearchAsync(word, []));
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("\t\n")]
@@ -147,7 +147,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.SearchOps.CommunityFulltextSearchAsync(query, [group]));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Fulltext_search_ignores_case_and_punctuation()
     {
         var group = NewGroup();
@@ -161,7 +161,7 @@ public abstract partial class GraphDriverConformanceTests
 
     // ---------------------------------------------------------------- similarity
 
-    [Fact]
+    [SkippableFact]
     public async Task Node_similarity_search_ranks_by_cosine_with_a_minimum_score()
     {
         var group = NewGroup();
@@ -199,7 +199,7 @@ public abstract partial class GraphDriverConformanceTests
             Ids(await Driver.SearchOps.NodeSimilaritySearchAsync(Vec(3, 0, 0), NoFilter, [group])));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Fact_similarity_search_ranks_by_cosine_and_can_be_restricted_to_endpoints()
     {
         var group = NewGroup();
@@ -240,7 +240,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Single(await Driver.SearchOps.EdgeSimilaritySearchAsync(query, null, null, NoFilter, [group], limit: 1, minScore: 0));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Community_similarity_search_ranks_by_cosine_with_a_minimum_score()
     {
         var group = NewGroup();
@@ -259,7 +259,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Single(await Driver.SearchOps.CommunitySimilaritySearchAsync(Vec(0, 0, 1), [group], limit: 1));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Similarity_search_restricts_to_the_given_groups()
     {
         var group = NewGroup();
@@ -333,7 +333,7 @@ public abstract partial class GraphDriverConformanceTests
         EntityEdge F4,
         EpisodicNode P);
 
-    [Fact]
+    [SkippableFact]
     public async Task Node_bfs_follows_facts_from_source_to_target_up_to_the_depth()
     {
         var g = await SaveBfsGraph();
@@ -359,7 +359,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Equal(2, (await Driver.SearchOps.NodeBfsSearchAsync([g.A.Uuid], NoFilter, 3, [g.Group], limit: 2)).Count);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Node_bfs_returns_the_origin_only_through_a_cycle()
     {
         var group = NewGroup();
@@ -375,7 +375,7 @@ public abstract partial class GraphDriverConformanceTests
         AssertSameNodes([y], await Driver.SearchOps.NodeBfsSearchAsync([z.Uuid, x.Uuid], NoFilter, 1, [group], limit: 100));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Node_bfs_starts_from_episodes_through_their_mentions()
     {
         var g = await SaveBfsGraph();
@@ -396,7 +396,7 @@ public abstract partial class GraphDriverConformanceTests
             await Driver.SearchOps.NodeBfsSearchAsync([other.Uuid], NoFilter, 3, [g.Group], limit: 100));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Node_bfs_applies_groups_and_filters()
     {
         var g = await SaveBfsGraph();
@@ -420,7 +420,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.SearchOps.NodeBfsSearchAsync([g.A.Uuid], NoFilter, 1, [strangerGroup], limit: 100));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Edge_bfs_returns_the_facts_on_paths_up_to_the_depth()
     {
         var g = await SaveBfsGraph();
@@ -467,7 +467,7 @@ public abstract partial class GraphDriverConformanceTests
 
     // ---------------------------------------------------------------- connected nodes
 
-    [Fact]
+    [SkippableFact]
     public async Task Connected_node_uuids_are_the_candidates_joined_by_a_fact_either_way()
     {
         var group = NewGroup();

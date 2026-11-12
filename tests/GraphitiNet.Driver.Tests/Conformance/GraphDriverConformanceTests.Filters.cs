@@ -81,7 +81,7 @@ public abstract partial class GraphDriverConformanceTests
     private static PropertyFilter Property(string name, ComparisonOperator op, object? value = null) =>
         new() { PropertyName = name, ComparisonOperator = op, PropertyValue = value };
 
-    [Fact]
+    [SkippableFact]
     public async Task No_filter_returns_every_fact()
     {
         var g = await SaveFilterGraph();
@@ -89,7 +89,7 @@ public abstract partial class GraphDriverConformanceTests
         await AssertEdgeFilter(g, new SearchFilters(), g.F1, g.F2, g.F3, g.F4);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Edge_types_filter_facts_by_name()
     {
         var g = await SaveFilterGraph();
@@ -99,7 +99,7 @@ public abstract partial class GraphDriverConformanceTests
         await AssertEdgeFilter(g, new SearchFilters { EdgeTypes = [] });
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Edge_uuids_and_endpoints_filter_facts()
     {
         var g = await SaveFilterGraph();
@@ -114,7 +114,7 @@ public abstract partial class GraphDriverConformanceTests
             g.F2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Node_labels_filter_facts_by_both_endpoints()
     {
         var g = await SaveFilterGraph();
@@ -126,7 +126,7 @@ public abstract partial class GraphDriverConformanceTests
         await AssertEdgeFilter(g, new SearchFilters { NodeLabels = ["Entity"] }, g.F1, g.F2, g.F3, g.F4);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Valid_at_filters_combine_and_within_groups_and_or_across_them()
     {
         var g = await SaveFilterGraph();
@@ -166,7 +166,7 @@ public abstract partial class GraphDriverConformanceTests
             g.F2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Invalid_at_created_at_and_expired_at_filter_facts()
     {
         var g = await SaveFilterGraph();
@@ -195,7 +195,7 @@ public abstract partial class GraphDriverConformanceTests
             g.F1, g.F2, g.F3);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Date_filters_on_different_fields_all_apply()
     {
         var g = await SaveFilterGraph();
@@ -214,7 +214,7 @@ public abstract partial class GraphDriverConformanceTests
             g.F2);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Property_filters_compare_fact_attributes()
     {
         var g = await SaveFilterGraph();
@@ -243,7 +243,7 @@ public abstract partial class GraphDriverConformanceTests
             Where(Property("weight", ComparisonOperator.GreaterThan, 1), Property("colour", ComparisonOperator.Equals, "red")));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Edge_similarity_endpoints_and_filters_combine()
     {
         var g = await SaveFilterGraph();
@@ -288,7 +288,7 @@ public abstract partial class GraphDriverConformanceTests
             await Driver.SearchOps.NodeBfsSearchAsync([originUuid], filters, 1, [group], limit: 100));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_searches_apply_node_labels_and_property_filters()
     {
         var (group, ann, paris, bob, embedding) = await SaveNodeFilterGraph();
@@ -329,7 +329,7 @@ public abstract partial class GraphDriverConformanceTests
             ann, paris);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Entity_searches_ignore_fact_only_filter_fields()
     {
         var (group, ann, paris, bob, embedding) = await SaveNodeFilterGraph();
@@ -351,7 +351,7 @@ public abstract partial class GraphDriverConformanceTests
         await AssertNodeFilter(group, episode.Uuid, embedding, factOnly, ann, paris, bob);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Episode_fulltext_search_takes_but_does_not_apply_filters()
     {
         var group = NewGroup();
