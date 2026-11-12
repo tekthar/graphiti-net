@@ -10,6 +10,7 @@ graphiti-net differs from upstream's Neo4j driver, and how to add and test a dri
 | --- | --- | --- |
 | In-memory (`InMemoryGraphDriver`) | `GraphitiNet` | Zero-install: tests, demos, small apps. Thread-safe, one lock. BM25 full-text, exact cosine similarity. Can save to and load from a JSON file. |
 | PostgreSQL (`PostgresDriver`) | `GraphitiNet.PostgreSql` | The default for production: EF Core, pgvector, built-in full-text search. See [postgresql.md](postgresql.md). |
+| SQL Server (`SqlServerDriver`) | `GraphitiNet.SqlServer` | SQL Server 2025 and Azure SQL: EF Core, the native `vector` type, BM25 keyword search over a driver-maintained keyword index. See [sqlserver.md](sqlserver.md). |
 | SQLite | planned | |
 
 ```csharp

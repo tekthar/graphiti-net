@@ -9,7 +9,7 @@ namespace GraphitiNet.Driver.Tests.Conformance;
 // the episodes mentioning many entities at once.
 public abstract partial class GraphDriverConformanceTests
 {
-    [Fact]
+    [SkippableFact]
     public async Task Entities_by_names_match_exactly_within_the_given_groups()
     {
         var group = NewGroup();
@@ -33,7 +33,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Driver.EntityNodeOps.GetByNamesAsync(["Alice Smith"], []));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Entities_by_attribute_values_match_every_value_in_one_group()
     {
         var group = NewGroup();
@@ -72,7 +72,7 @@ public abstract partial class GraphDriverConformanceTests
         Assert.Empty(await Find(Attributes()));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Episode_ids_for_many_entities_come_from_their_own_group_in_one_call()
     {
         var group = NewGroup();

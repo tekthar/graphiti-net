@@ -57,6 +57,57 @@ public class ParityRunTests(ITestOutputHelper output)
         await RunAsync(dataset, driver, bulk);
     }
 
+    [SkippableTheory]
+    [InlineData("customer-support")]
+    public Task Bulk_ingestion_on_sqlserver_matches_upstream_on_recorded_answers(string dataset) =>
+        Ingestion_on_sqlserver_matches_upstream_on_recorded_answers(dataset, bulk: true);
+
+    [SkippableTheory]
+    [InlineData("customer-support")]
+    [InlineData("arabic")]
+    public async Task Ingestion_on_sqlserver_matches_upstream_on_recorded_answers(string dataset, bool bulk = false)
+    {
+        var connection = Environment.GetEnvironmentVariable("GRAPHITI_TEST_SQLSERVER")
+            ?? "Server=localhost,1433;Database=graphiti_sqlserver_tests;User Id=sa;Password=Graphiti_dev_Passw0rd;"
+            + "TrustServerCertificate=True";
+        GraphitiNet.Driver.SqlServer.SqlServerDriver driver;
+        try
+        {
+            await EnsureSqlServerDatabaseAsync(connection);
+            driver = new GraphitiNet.Driver.SqlServer.SqlServerDriver(
+                connection,
+                new GraphitiNet.Driver.SqlServer.SqlServerGraphOptions
+                {
+                    Schema = "parity_" + dataset.Replace('-', '_') + (bulk ? "_bulk" : ""),
+                });
+            await driver.GraphOps.BuildIndicesAndConstraintsAsync(deleteExisting: true);
+        }
+        catch (Exception e) when (e is Microsoft.Data.SqlClient.SqlException or System.Net.Sockets.SocketException
+            or TimeoutException)
+        {
+            Skip.If(true, $"SQL Server is unreachable: {e.Message}");
+            return;
+        }
+
+        await RunAsync(dataset, driver, bulk);
+    }
+
+    /// <summary>Creates the test database named in the connection string if it does not exist.</summary>
+    private static async Task EnsureSqlServerDatabaseAsync(string connectionString)
+    {
+        var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString) { ConnectTimeout = 5 };
+        var database = builder.InitialCatalog;
+        builder.InitialCatalog = "master";
+        await using var connection = new Microsoft.Data.SqlClient.SqlConnection(builder.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new Microsoft.Data.SqlClient.SqlCommand(
+            "IF DB_ID(@name) IS NULL EXEC (N'CREATE DATABASE ' + @quoted)",
+            connection);
+        command.Parameters.AddWithValue("@name", database);
+        command.Parameters.AddWithValue("@quoted", "[" + database.Replace("]", "]]", StringComparison.Ordinal) + "]");
+        await command.ExecuteNonQueryAsync();
+    }
+
     private async Task RunAsync(string dataset, GraphitiNet.Driver.IGraphDriver driver, bool bulk = false)
     {
         var llm0 = (ReplayLLMClient?)null;

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GraphitiNet.Driver.SqlServer</RootNamespace>
+    <PackageId>GraphitiNet.SqlServer</PackageId>
+    <Description>SQL Server 2025 and Azure SQL storage for graphiti-net through EF Core, with the native vector type for vector search and BM25 keyword search. No graph database needed.</Description>
+    <PackageTags>$(PackageTags);sqlserver;azure-sql;vector;efcore</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="GraphitiNet.SqlServer.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GraphitiNet.Core\GraphitiNet.Core.csproj" />
+  </ItemGroup>
+
+</Project>

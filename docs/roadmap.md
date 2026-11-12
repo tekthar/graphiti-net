@@ -82,6 +82,8 @@ Done and merged:
   `0.1.0-preview.1`.
 - Bulk ingest (`AddEpisodeBulkAsync`, with combined entity and fact extraction by default), replayed against a
   recorded upstream `add_episode_bulk` run on every commit.
+- The SQL Server 2025 / Azure SQL driver (`GraphitiNet.SqlServer`): EF Core, the native `vector` type, BM25 keyword
+  search over a driver-maintained keyword index; both parity datasets match upstream on it.
 
 Next:
 
@@ -163,7 +165,7 @@ Next:
 
 ### Phase 7: Optional extras
 
-- SQL Server 2025 / Azure SQL backend.
+- SQL Server 2025 / Azure SQL backend (done: `GraphitiNet.SqlServer`).
 - Not planned: a Neo4j or other graph-database driver. It is not a requirement today.
 - ASP.NET Core REST server.
 - MCP server on the official C# MCP SDK.

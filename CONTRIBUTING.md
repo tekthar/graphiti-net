@@ -46,8 +46,8 @@ this project is an independent rewrite.
 
 The [release workflow](.github/workflows/release.yml) checks that the tag matches the version, builds, runs the tests
 against PostgreSQL, packs, and pushes the packages and their symbol packages to nuget.org. It needs one repository
-secret, `NUGET_API_KEY`: a nuget.org API key scoped to push the `GraphitiNet` and `GraphitiNet.PostgreSql` packages
-(Settings → Secrets and variables → Actions).
+secret, `NUGET_API_KEY`: a nuget.org API key scoped to push the `GraphitiNet`, `GraphitiNet.PostgreSql` and
+`GraphitiNet.SqlServer` packages (Settings → Secrets and variables → Actions).
 
 ## Code of conduct
 
