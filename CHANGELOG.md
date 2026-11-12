@@ -3,6 +3,16 @@
 All notable changes to graphiti-net. Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a
 preview may change the API.
 
+## Unreleased
+
+### Added
+
+- **SQL Server storage** (`GraphitiNet.SqlServer`): a driver for SQL Server 2025 and Azure SQL through EF Core, with
+  the native `vector` type for vector search, BM25 keyword search (ranked as upstream's Lucene) over a keyword index
+  the driver keeps in step with every write, breadth-first search in one batch, tables in your own `DbContext` and
+  migrations with a schema name and table prefix. It passes the driver conformance suite, and both parity datasets
+  match upstream on it. See [docs/sqlserver.md](docs/sqlserver.md).
+
 ## 0.1.0-preview.1
 
 The first public preview. Ported from Python Graphiti

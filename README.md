@@ -26,10 +26,10 @@ it came from.
 | `AddTripletAsync`, `RemoveEpisodeAsync`, `ClearDataAsync`, `RetrieveEpisodesAsync` | Works |
 | Search: every method, reranker and recipe, filters, center-node rerank | Works |
 | Communities, sagas (`SummarizeSagaAsync`), custom entity and edge types | Works |
-| Storage: PostgreSQL + pgvector, in memory | Works |
+| Storage: PostgreSQL + pgvector, SQL Server 2025 / Azure SQL, in memory | Works |
 | Providers: OpenAI, Azure OpenAI, OpenAI-compatible, any Microsoft.Extensions.AI client | Works |
 | `AddEpisodeBulkAsync`, with combined extraction by default | Works; replayed against a recorded upstream `add_episode_bulk` run on every commit |
-| PostgreSQL parity on the `customer-support` dataset | Known gap: one fact-resolution step gets a different candidate set |
+| PostgreSQL parity on the `customer-support` dataset | Known gap: one fact-resolution step gets a different candidate set (SQL Server and in memory match) |
 | Graph building against Python Graphiti on LongMemEval | 100 messages: within upstream's own run-to-run variation ([results](parity/results/2026-11-12-lme-graph-building.md)) |
 | LongMemEval QA, DMR and LoCoMo benchmarks | Before 1.0 |
 | Consumer requirements (AbpAgent, issues #1 and #2) | Every criterion tested on both drivers ([acceptance](docs/acceptance.md)) |
@@ -39,14 +39,17 @@ it came from.
 ```bash
 dotnet add package GraphitiNet --prerelease
 dotnet add package GraphitiNet.PostgreSql --prerelease   # for PostgreSQL storage
+dotnet add package GraphitiNet.SqlServer --prerelease    # for SQL Server 2025 / Azure SQL storage
 ```
 
 | Package | What it holds |
 | --- | --- |
 | [`GraphitiNet`](https://www.nuget.org/packages/GraphitiNet) | The library: ingestion, search, providers, the in-memory driver |
 | [`GraphitiNet.PostgreSql`](https://www.nuget.org/packages/GraphitiNet.PostgreSql) | PostgreSQL storage through EF Core, with pgvector |
+| [`GraphitiNet.SqlServer`](https://www.nuget.org/packages/GraphitiNet.SqlServer) | SQL Server 2025 and Azure SQL storage through EF Core, with the native `vector` type |
 
-Requires .NET 10. Nothing else to install for the in-memory driver; PostgreSQL needs the pgvector extension.
+Requires .NET 10. Nothing else to install for the in-memory driver; PostgreSQL needs the pgvector extension; SQL
+Server needs version 2025 (or Azure SQL) for the `vector` type.
 
 ## Quickstart
 
@@ -111,6 +114,7 @@ keep their names in `camelCase`.
 | Driver | Package | Use it for |
 | --- | --- | --- |
 | `PostgresDriver` | `GraphitiNet.PostgreSql` | Production. Tables in a PostgreSQL database you already run, through EF Core; pgvector for vectors, built-in full-text search. Can live in your own `DbContext` and migrations. See [docs/postgresql.md](docs/postgresql.md). |
+| `SqlServerDriver` | `GraphitiNet.SqlServer` | Production on SQL Server 2025 or Azure SQL, through EF Core; the native `vector` type for vectors, BM25 keyword ranking as upstream's Lucene (no full-text search needed). Can live in your own `DbContext` and migrations. See [docs/sqlserver.md](docs/sqlserver.md). |
 | `InMemoryGraphDriver` | `GraphitiNet` | Zero-install: tests, demos, small apps. BM25 keyword ranking. Can save to and load from a JSON file. |
 
 No graph database is needed, and none is supported. Other drivers implement `IGraphDriver`; see
@@ -146,8 +150,8 @@ Opt-in or additive. With the defaults, behaviour matches upstream. Details in
 Python Graphiti on the same input is the definition of correct. See [parity/README.md](parity/README.md).
 
 - **Replay on every commit.** Upstream's prompts and model answers are recorded once; the port replays them and must
-  produce the same entities, facts, validity dates and invalidations. In memory, both datasets match; on PostgreSQL,
-  `arabic` matches and `customer-support` has one known gap.
+  produce the same entities, facts, validity dates and invalidations. In memory and on SQL Server, both datasets
+  match; on PostgreSQL, `arabic` matches and `customer-support` has one known gap.
 - **Graph building on LongMemEval** with live models, judged by an LLM with upstream's own evaluation: graphiti-net
   scored 0.472 against a Python Graphiti baseline, where a second Python Graphiti run scored 0.361 and a graph with
   every fact removed 0.111. A small sample (36 messages); see
@@ -161,6 +165,7 @@ The port follows **Graphiti [v0.31.2](https://github.com/getzep/graphiti/release
   where behaviour differs.
 - [How Graphiti works](docs/how-graphiti-works.md): episodes, entities, facts, time and search.
 - [PostgreSQL storage](docs/postgresql.md): setup, your own DbContext, migrations, embedding size, languages.
+- [SQL Server storage](docs/sqlserver.md): SQL Server 2025 and Azure SQL; setup, your own DbContext, keyword ranking.
 - [Graph drivers](docs/drivers.md): the storage contract and how to add a driver.
 - [Custom types](docs/custom-types.md): your own entity and edge types as C# classes.
 - [Acceptance tests](docs/acceptance.md): each requirement of the first consumer, AbpAgent, and the test that checks

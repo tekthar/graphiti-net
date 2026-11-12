@@ -80,6 +80,10 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.PostgreSql/Operations/GraphMaintenanceOperations.cs` | `graphiti_core/driver/neo4j/operations/graph_ops.py` |
 | `src/GraphitiNet.PostgreSql/Operations/NodeOperations.cs` | `graphiti_core/driver/neo4j/operations/episode_node_ops.py`, `entity_node_ops.py`, `community_node_ops.py`, `saga_node_ops.py`, `entity_edge_ops.py` |
 | `src/GraphitiNet.PostgreSql/Operations/SearchOperations.cs` | `graphiti_core/driver/neo4j/operations/search_ops.py`, `graphiti_core/search/search_utils.py` |
+| `src/GraphitiNet.SqlServer/Internal/FilterSql.cs` | `graphiti_core/search/search_filters.py` |
+| `src/GraphitiNet.SqlServer/Operations/GraphMaintenanceOperations.cs` | `graphiti_core/driver/neo4j/operations/graph_ops.py` |
+| `src/GraphitiNet.SqlServer/Operations/NodeOperations.cs` | `graphiti_core/driver/neo4j/operations/episode_node_ops.py`, `entity_node_ops.py`, `community_node_ops.py`, `saga_node_ops.py`, `entity_edge_ops.py` |
+| `src/GraphitiNet.SqlServer/Operations/SearchOperations.cs` | `graphiti_core/driver/neo4j/operations/search_ops.py`, `graphiti_core/search/search_utils.py` |
 | `tests/GraphitiNet.Core.Tests/CrossEncoder/ChatClientCrossEncoderTests.cs` | `tests/cross_encoder/test_gemini_reranker_client.py` |
 | `tests/GraphitiNet.Core.Tests/Embedder/OpenAIEmbedderTests.cs` | `tests/embedder/test_openai.py`, `tests/embedder/embedder_fixtures.py` |
 | `tests/GraphitiNet.Core.Tests/Graphiti/AddEpisodeBulkTests.cs` | `tests/test_graphiti_mock.py (test_add_bulk)` |

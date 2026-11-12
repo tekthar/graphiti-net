@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GraphitiNet.Driver.SqlServer.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- xUnit test method names use underscores. -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GraphitiNet.SqlServer\GraphitiNet.SqlServer.csproj" />
+    <ProjectReference Include="..\GraphitiNet.Driver.Tests\GraphitiNet.Driver.Tests.csproj" />
+  </ItemGroup>
+
+</Project>

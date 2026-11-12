@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\GraphitiNet.Core\GraphitiNet.Core.csproj" />
     <ProjectReference Include="..\..\src\GraphitiNet.PostgreSql\GraphitiNet.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\src\GraphitiNet.SqlServer\GraphitiNet.SqlServer.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,8 +1,8 @@
 name: Release
 
 # Publishes the NuGet packages when a version tag is pushed, for example v0.1.0-preview.1.
-# Needs the repository secret NUGET_API_KEY: a nuget.org API key with push rights for the GraphitiNet and
-# GraphitiNet.PostgreSql packages. See CONTRIBUTING.md, "Releasing".
+# Needs the repository secret NUGET_API_KEY: a nuget.org API key with push rights for the GraphitiNet,
+# GraphitiNet.PostgreSql and GraphitiNet.SqlServer packages. See CONTRIBUTING.md, "Releasing".
 
 on:
   push:
