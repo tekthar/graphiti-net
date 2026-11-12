@@ -161,9 +161,9 @@ Known differences from upstream:
 
 - **No upstream SQL driver to copy.** Upstream ships only graph-database drivers (Neo4j, FalkorDB, Amazon Neptune,
   Kuzu), so every Cypher query is rewritten in SQL. These queries need the most testing.
-- **Keyword ranking differs.** Neo4j ranks full-text matches with BM25 (through Lucene); PostgreSQL's built-in ranking
-  does not. Search results will differ slightly from Python Graphiti. Keyword search is one input to the fused
-  ranking, so the effect should be small, and the LongMemEval gate catches a real drop.
+- **Keyword ranking.** Neo4j ranks full-text matches with BM25 (through Lucene). Every graphiti-net driver ranks with
+  the same BM25 and Lucene-style tokenisation, so results match upstream's up to near-ties; Lucene's own statistics
+  also count deleted documents until its segments merge, which no SQL driver reproduces.
 - **Very large graphs.** A graph database pulls ahead on very large, densely connected graphs searched many hops deep.
   Graphiti's capped queries mostly avoid this.
 
