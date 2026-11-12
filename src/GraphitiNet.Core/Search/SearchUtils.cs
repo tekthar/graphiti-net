@@ -83,6 +83,8 @@ public static class SearchUtils
     /// <param name="rankConst">The rank constant; upstream uses 1.</param>
     /// <param name="minScore">Ids scoring below this are dropped.</param>
     /// <returns>The fused ids and their scores.</returns>
+    /// <exception cref="DivideByZeroException">A rank plus <paramref name="rankConst"/> is 0, as upstream's
+    /// <c>ZeroDivisionError</c>.</exception>
     public static (IReadOnlyList<string> Uuids, IReadOnlyList<double> Scores) Rrf(
         IEnumerable<IReadOnlyList<string>> results,
         int rankConst = 1,
@@ -103,7 +105,14 @@ public static class SearchUtils
                     score = 0;
                 }
 
-                scores[uuid] = score + (1.0 / (i + rankConst));
+                // Python raises ZeroDivisionError where the rank plus the constant is 0; so does the port.
+                var denominator = i + rankConst;
+                if (denominator == 0)
+                {
+                    throw new DivideByZeroException("division by zero");
+                }
+
+                scores[uuid] = score + (1.0 / denominator);
             }
         }
 

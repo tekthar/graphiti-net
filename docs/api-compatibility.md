@@ -299,6 +299,13 @@ foreach (var node in nodeResults.Nodes)
   store for every group, so every call uses the shared driver; group ids only partition data.
 - **Text lengths** in content chunking and saga budgets are counted in UTF-16 code units, where Python counts code
   points. They differ only for characters outside the Basic Multilingual Plane, such as emoji.
+- **Out-of-range timestamps from the LLM.** Timestamps are parsed exactly as Python's `datetime.fromisoformat` parses
+  them, but where the conversion to UTC leaves the datetime range (`0001-01-01T00:00:00+01:00`), Python raises
+  `OverflowError`, which upstream does not catch, so the whole extraction fails. graphiti-net skips the value as
+  unparseable, as it does any text Python rejects.
+- **Ties upstream breaks in set order.** Where upstream picks among equals by iterating a Python set (equally similar
+  fuzzy candidates in entity deduplication, dropped attributes restored in `replace` mode, uncovered pairs in
+  covering chunks), the order changes from run to run or follows CPython's hashing; graphiti-net uses a fixed order.
 
 ## graphiti-net additions
 

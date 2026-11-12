@@ -5,6 +5,7 @@
 // Ported from graphiti_core/utils/bulk_utils.py (Graphiti v0.31.2) and changed for .NET.
 
 using GraphitiNet.Models;
+using GraphitiNet.Prompts;
 
 namespace GraphitiNet.Maintenance;
 
@@ -69,7 +70,7 @@ public static partial class BulkUtils
     /// <c>compress_uuid_map</c>). Direction is ignored.
     /// </summary>
     /// <param name="duplicatePairs">Pairs of ids that are duplicates of each other.</param>
-    /// <returns>Every id in a pair, mapped to its group's smallest id (ordinal comparison).</returns>
+    /// <returns>Every id in a pair, mapped to its group's smallest id (by code point, as Python compares strings).</returns>
     public static IReadOnlyDictionary<string, string> CompressUuidMap(
         IEnumerable<(string First, string Second)> duplicatePairs)
     {
@@ -159,8 +160,8 @@ public static partial class BulkUtils
                 return;
             }
 
-            // Attach the lexicographically larger root under the smaller.
-            if (string.CompareOrdinal(ra, rb) < 0)
+            // Attach the lexicographically larger root under the smaller, comparing code points as Python does.
+            if (PythonText.CodePointOrder.Compare(ra, rb) < 0)
             {
                 _parent[rb] = ra;
             }

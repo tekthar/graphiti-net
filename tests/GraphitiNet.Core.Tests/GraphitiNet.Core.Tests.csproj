@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <None Include="Prompts/Fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Differential/Fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
