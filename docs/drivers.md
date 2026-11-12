@@ -38,7 +38,8 @@ conformance suite checks:
   ends at it. Deleting a community or saga leaves its members and episodes. Unknown ids are ignored.
 - **UTC:** every timestamp comes back in UTC (`Offset == TimeSpan.Zero`) and is compared as an instant. The suite uses
   millisecond precision; backends may drop anything finer than a microsecond.
-- **Labels** round-trip as a set (order and duplicates are not kept). Drivers neither add nor remove labels.
+- **Labels** round-trip as a set (order and duplicates are not kept). Entity nodes always come back with the `Entity`
+  label, added if it was not saved, as upstream; drivers add or remove no other label.
 - **Attributes and episode metadata** round-trip as JSON: what comes back serialises to the same JSON. The in-memory
   driver returns `string`, `long`, `double`, `bool`, `null`, `Dictionary<string, object?>` and `List<object?>`.
 - **Endpoints:** core saves an edge's endpoints first. What a backend does with an edge whose endpoint is missing is
@@ -46,9 +47,10 @@ conformance suite checks:
 
 ### Episodes and sagas
 
-- `RetrieveEpisodesAsync` takes the `lastN` latest episodes with `ValidAt <= referenceTime` (by `ValidAt`
-  descending), then returns them oldest first. `null` or empty group ids mean every group. `source` and `saga` (by
-  name) filter further.
+- `RetrieveEpisodesAsync` takes the `lastN` latest episodes with `ValidAt <= referenceTime` (by `ValidAt`, then
+  `CreatedAt`, descending), then returns them oldest first. `null` or empty group ids mean every group. `source`
+  filters further. `saga` restricts to the episodes of the saga with that name **in the first group id**, as upstream;
+  with no group ids it matches nothing, and the group ids do not further restrict the saga's episodes.
 - `GetBySagaAsync`: the saga's episodes by `CreatedAt`, then `ValidAt`, ascending; `createdAfter` is exclusive.
 - `SagaNodeOps.GetByNameAsync`: exact, case-sensitive name within one group.
 - `GetPreviousEpisodeUuidAsync`: the saga's latest episode other than the current one, by `ValidAt` then `CreatedAt`,
@@ -57,23 +59,31 @@ conformance suite checks:
 ### Search
 
 - **Group ids:** `null` means every group; an empty list matches nothing.
-- **Full-text** fields: entities on name and summary, facts on name and fact, episodes on content and source
-  description, communities on name. A record matches if it contains **any** query term (Lucene's default `OR`; note
-  that PostgreSQL's `plainto_tsquery` and SQLite FTS5 default to `AND`), ignoring case and punctuation. Best first by
-  the backend's relevance score. An empty or whitespace query returns nothing.
-- **Similarity:** cosine similarity, results scoring **at least** `minScore`, best first. Records without an embedding
-  never match. Fact search's source and target restrictions apply on their own or together, with or without group
-  ids.
-- **Breadth-first:** from entity or episode origins, following facts in both directions and episode-to-entity links
-  outward only, up to `maxDepth` hops (`< 1` returns nothing; callers cap it at 3). Entity BFS returns entities 1 to
-  `maxDepth` hops away, in the origin's group, not counting the origin itself. Fact BFS returns facts on those paths;
-  from an episode, the mention is the first hop. Order is not specified.
+- **Full-text** fields: entities on name and summary, facts on name and fact, episodes on content, source (its stored
+  name: `message`, `json`, `text`, `fact_triple`) and source description, communities on name. A record matches if it
+  contains **any** query term (Lucene's default `OR`; note that PostgreSQL's `plainto_tsquery` and SQLite FTS5 default
+  to `AND`), ignoring case and punctuation. Best first by the backend's relevance score. An empty or whitespace query
+  returns nothing. (Core applies upstream's 128-word query guard.)
+- **Similarity:** cosine similarity, results scoring **strictly more than** `minScore` (`score > min_score`, as
+  upstream), best first. Records without an embedding never match. Fact search's source and target restrictions apply
+  on their own or together, with or without group ids.
+- **Breadth-first** follows upstream's `(origin)-[:RELATES_TO|MENTIONS*1..maxDepth]->(n:Entity)`:
+  - paths follow facts **from source to target only**, and episode-to-entity links from the episode; every link is one
+    hop, so from an episode the mention is the first hop;
+  - `maxDepth < 1` returns nothing; drivers do not cap it (core caps it at 3);
+  - entity BFS returns, without duplicates, every entity at the end of a path of 1 to `maxDepth` hops that is in the
+    same group as the path's origin. The origin itself is returned only if a cycle leads back to it within `maxDepth`
+    hops. Group ids restrict both the origin and the result; filters apply to the result;
+  - fact BFS returns, without duplicates, every fact on such a path: every fact whose source is at most
+    `maxDepth - 1` hops from an origin (the origin itself is 0 hops). Group ids and filters restrict the facts only;
+    the origin's group does not matter;
+  - order is not specified.
 - **Filters:**
   - entity searches (full-text, similarity, BFS) apply `NodeLabels` and `PropertyFilters` (on `Attributes`) and
     ignore the fact-only fields;
   - fact searches apply every field: `NodeLabels` to both endpoints, `PropertyFilters` to the fact's `Attributes`;
   - episode full-text takes a filter but ignores it, as upstream;
-  - every entity has the implicit label `Entity`;
+  - every entity has the label `Entity`;
   - a date field holds OR groups of AND lists: `[[a, b], [c]]` is `(a AND b) OR c`;
   - an empty list in any filter matches nothing;
   - a comparison with a missing value is false; only `IsNull` matches it;
@@ -91,28 +101,26 @@ conformance suite checks:
 - `GetEntityGroupIdsAsync`: distinct groups that have entities.
 - `RemoveCommunitiesAsync`: communities in the groups (all if `null` or empty) and their membership edges.
 - `GetMentionedNodesAsync` / `GetCommunitiesByNodesAsync`: distinct results.
-- `GetNeighborCommunitiesAsync`: one entry per neighbouring member, so a community appears once for each of its
-  members that shares a fact with the entity.
-- `CountEpisodeMentionsAsync`: distinct mentioning episodes per entity; every requested id is a key, 0 if none.
+- `GetNeighborCommunitiesAsync`: one entry per (fact, membership edge) pair, as upstream's
+  `(c:Community)-[:HAS_MEMBER]->(m:Entity)-[:RELATES_TO]-(n:Entity {uuid: $entity_uuid})`: a community appears once for
+  every fact (either direction) between the entity and one of its members.
+- `CountEpisodeMentionsAsync`: the number of episode-to-entity links per entity (upstream's `count(*)`, so two links
+  from one episode count twice); every requested id is a key, 0 if none.
 
-## Differences from upstream's Neo4j driver
+## Differences from upstream
 
-Where the contract and upstream differ, the contract wins:
+Upstream's Neo4j search runs the generic queries in `search/search_utils.py` (the `*2..depth` BFS variants there are
+for Kuzu, which stores each fact as two edges around a node). graphiti-net matches those results except here:
 
-| Topic | Upstream (Neo4j, v0.31.2) | graphiti-net |
-| --- | --- | --- |
-| `retrieve_episodes` order | the Neo4j operation returns newest first; the caller reverses | the driver returns oldest first |
-| `retrieve_episodes` saga | looked up in the first group id only; with no group ids it is ignored or matches nothing, depending on the code path | looked up in every given group, or every group |
-| Similarity threshold | `score > min_score` | `score >= minScore` |
-| Fact similarity endpoints | applied only when group ids are given | always applied |
-| Breadth-first direction | facts followed source to target only | facts followed both ways |
-| Date filter OR groups | parameters are named by position within a group, so later groups overwrite earlier groups' values | each group keeps its own values |
-| Property filters | defined but never applied | applied to entity and fact attributes |
-| Neighbour communities | one row per (member, fact) pair | one entry per member |
-| `clear_data(groups)` | nodes in the groups and their edges | also edges whose own group is listed |
-| Full-text fields | episodes also index `source` | content and source description only |
-| Full-text query length | queries of 128+ words return nothing | no limit |
-| Labels | `Entity` is added on save | stored as given; `Entity` is implicit in filters |
+| Topic | Upstream (v0.31.2) | graphiti-net | Why |
+| --- | --- | --- | --- |
+| `retrieve_episodes` order | the query returns newest first; the function reverses | the driver returns oldest first | same result to the caller |
+| Fact similarity endpoints | applied only when group ids are given | always applied | core never passes endpoints, so no difference in use; the upstream form is a bug |
+| Date filter OR groups | parameters are named by position within a group, so later groups overwrite earlier groups' values | each group keeps its own values | upstream bug |
+| Property filters | defined but never applied | applied to entity and fact attributes | the field exists to be used |
+| Entity BFS duplicates | one row per path (no `DISTINCT`), so `limit` counts paths | distinct entities | core deduplicates anyway |
+| `clear_data(groups)` | nodes in the groups and their edges | also edges whose own group is listed | same in normal use, where edges share their endpoints' group |
+| Full-text query length | queries of 128+ words return nothing | the driver has no limit | core applies the guard |
 
 The in-memory driver ranks full-text with BM25 like Lucene (k1 = 1.2, b = 0.75, per-field statistics summed over
 fields). It splits on every character that is not a letter or digit, so `WORKS_AT` is two terms, where Lucene's

@@ -106,10 +106,17 @@ public abstract partial class GraphDriverConformanceTests
             Ids(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(
                 Day(9), lastN: 10, groupIds: [otherGroup], saga: sagaName)));
 
-        // The saga filter applies without group ids too (upstream ignores it then).
+        // As upstream, the saga is looked up in the first group only, and without group ids nothing matches.
         Assert.Equal(
-            Ids([e1, elsewhere, e3, e4]),
-            Ids(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(Day(9), lastN: 10, saga: sagaName)));
+            Ids([e1, e3, e4]),
+            Ids(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(
+                Day(9), lastN: 10, groupIds: [group, otherGroup], saga: sagaName)));
+        Assert.Equal(
+            Ids([elsewhere]),
+            Ids(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(
+                Day(9), lastN: 10, groupIds: [otherGroup, group], saga: sagaName)));
+        Assert.Empty(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(Day(9), lastN: 10, saga: sagaName));
+        Assert.Empty(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(Day(9), lastN: 10, groupIds: [], saga: sagaName));
         Assert.Empty(await Driver.EpisodeNodeOps.RetrieveEpisodesAsync(
             Day(9), lastN: 10, groupIds: [group], saga: "no such saga " + UniqueWord()));
     }

@@ -134,8 +134,10 @@ internal sealed class InMemoryGraphMaintenanceOperations(InMemoryStore store) : 
         Read<IReadOnlyList<CommunityNode>>(
             () =>
             {
-                var neighbours = new SortedSet<string>(StringComparer.Ordinal);
-                foreach (var edge in store.EntityEdges.Values)
+                // One entry per (fact, membership) pair, as upstream's
+                // MATCH (c:Community)-[:HAS_MEMBER]->(m:Entity)-[:RELATES_TO]-(n:Entity {uuid: $entity_uuid}).
+                var neighbours = new List<string>();
+                foreach (var edge in store.EntityEdges.Values.OrderBy(e => e.Uuid, StringComparer.Ordinal))
                 {
                     if (edge.SourceNodeUuid == entityUuid)
                     {
@@ -147,15 +149,14 @@ internal sealed class InMemoryGraphMaintenanceOperations(InMemoryStore store) : 
                     }
                 }
 
-                neighbours.RemoveWhere(uuid => !store.Entities.ContainsKey(uuid));
+                neighbours.RemoveAll(uuid => !store.Entities.ContainsKey(uuid));
                 var result = new List<CommunityNode>();
                 foreach (var neighbour in neighbours)
                 {
                     var communities = store.CommunityEdges.Values
                         .Where(e => e.TargetNodeUuid == neighbour)
+                        .OrderBy(e => e.Uuid, StringComparer.Ordinal)
                         .Select(e => e.SourceNodeUuid)
-                        .Distinct(StringComparer.Ordinal)
-                        .Order(StringComparer.Ordinal)
                         .Select(uuid => store.Communities.GetValueOrDefault(uuid))
                         .OfType<CommunityNode>();
                     result.AddRange(communities.Select(c => RecordCopies.Copy(c, includeEmbedding: false)));
@@ -176,10 +177,7 @@ internal sealed class InMemoryGraphMaintenanceOperations(InMemoryStore store) : 
                 var counts = entityUuids.Distinct(StringComparer.Ordinal).ToDictionary(
                     uuid => uuid,
                     uuid => store.EpisodicEdges.Values
-                        .Where(e => e.TargetNodeUuid == uuid && store.Episodes.ContainsKey(e.SourceNodeUuid))
-                        .Select(e => e.SourceNodeUuid)
-                        .Distinct(StringComparer.Ordinal)
-                        .Count(),
+                        .Count(e => e.TargetNodeUuid == uuid && store.Episodes.ContainsKey(e.SourceNodeUuid)),
                     StringComparer.Ordinal);
                 return counts;
             },

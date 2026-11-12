@@ -27,7 +27,8 @@ namespace GraphitiNet.Driver;
 /// before it (ordinal comparison), and <c>limit</c> caps the page.</item>
 /// <item>Deleting a node also deletes every edge that touches it (upstream's <c>DETACH DELETE</c>).</item>
 /// <item>Every timestamp is stored and returned in UTC.</item>
-/// <item>Labels round-trip as a set (order and duplicates are not kept); drivers neither add nor remove labels.</item>
+/// <item>Labels round-trip as a set (order and duplicates are not kept). Entity nodes always come back with the
+/// <c>Entity</c> label, added if it was not saved, as upstream; drivers add or remove no other label.</item>
 /// <item>Attribute and episode metadata values round-trip as JSON: what comes back serialises to the same JSON
 /// (strings, numbers, booleans, <see langword="null"/>, nested objects and lists).</item>
 /// <item>Edges are saved after their endpoints; what happens to an edge whose endpoint does not exist is up to the
@@ -144,8 +145,9 @@ public interface IEpisodeNodeOperations : INodeOperations<EpisodicNode>
     /// <param name="groupIds">Restrict to these groups, or all groups if <see langword="null"/> or empty (as
     /// upstream).</param>
     /// <param name="source">Restrict to one source type.</param>
-    /// <param name="saga">Restrict to episodes in a saga with this name, in <paramref name="groupIds"/> if given.
-    /// Upstream applies it only when group ids are given, and then only in the first group.</param>
+    /// <param name="saga">Restrict to episodes of the saga with this name in the first of
+    /// <paramref name="groupIds"/>, as upstream; with no group ids, nothing matches. The group ids do not further
+    /// restrict the saga's episodes.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     Task<IReadOnlyList<EpisodicNode>> RetrieveEpisodesAsync(
         DateTimeOffset referenceTime,
@@ -239,19 +241,25 @@ public interface INextEpisodeEdgeOperations : IRecordOperations<NextEpisodeEdge>
 /// </summary>
 /// <remarks>
 /// <para><b>Group ids:</b> <see langword="null"/> means every group; an empty list matches nothing.</para>
-/// <para><b>Full-text:</b> entity nodes match on name and summary; facts on name and fact text; episodes on content
-/// and source description; communities on name. A record matches when it contains any query term (Lucene's default
+/// <para><b>Full-text:</b> entity nodes match on name and summary; facts on name and fact text; episodes on content,
+/// source and source description (as upstream's <c>episode_content</c> index; the source is its stored name, such as
+/// <c>message</c> or <c>json</c>); communities on name. A record matches when it contains any query term (Lucene's default
 /// OR), ignoring case and punctuation. Results are ordered by the backend's relevance score, best first. An empty or
 /// whitespace query returns nothing.</para>
-/// <para><b>Similarity:</b> cosine similarity against the stored embedding; only results scoring at least
-/// <c>minScore</c> (inclusive; upstream's Neo4j driver uses <c>&gt;</c>), best first. Records with no embedding never
-/// match. The source and target restriction of fact search applies with or without group ids.</para>
-/// <para><b>Breadth-first:</b> starting from the origin nodes (entity or episode ids), follow facts in both directions
-/// and episode-to-entity links outward, up to <c>maxDepth</c> hops (callers cap it at 3, upstream's
-/// <c>MAX_SEARCH_DEPTH</c>); <c>maxDepth</c> below 1 returns nothing. Entity search returns the entities 1 to
-/// <c>maxDepth</c> hops from an origin, in that origin's group, not counting the origin itself; group ids restrict both
-/// the origin and the result. Fact search returns the facts on those paths (an episode's link to an entity is the
-/// first hop); group ids restrict the facts. Result order is not specified.</para>
+/// <para><b>Similarity:</b> cosine similarity against the stored embedding; only results scoring strictly more than
+/// <c>minScore</c> (<c>score &gt; min_score</c>, as upstream), best first. Records with no embedding never match. The
+/// source and target restriction of fact search applies with or without group ids (upstream applies it only with group
+/// ids, but core always passes none).</para>
+/// <para><b>Breadth-first:</b> paths start at the origin nodes (any node id; in practice entities and episodes) and
+/// follow facts from source to target only, and episode-to-entity links from the episode, as upstream's
+/// <c>(origin)-[:RELATES_TO|MENTIONS*1..maxDepth]-&gt;(n:Entity)</c>. Every link is one hop, so from an episode the
+/// mention is the first hop. <c>maxDepth</c> below 1 returns nothing; drivers do not cap it (core caps it at 3,
+/// upstream's <c>MAX_SEARCH_DEPTH</c>). Entity search returns, without duplicates, every entity at the end of a path of
+/// 1 to <c>maxDepth</c> hops that is in the same group as the path's origin; the origin itself is returned only when a
+/// cycle leads back to it within <c>maxDepth</c> hops. Group ids restrict both the origin and the result. Fact search
+/// returns, without duplicates, every fact on such a path, which is every fact whose source is at most
+/// <c>maxDepth - 1</c> hops from an origin (the origin itself is 0); group ids restrict the facts only. Result order is
+/// not specified.</para>
 /// <para><b>Filters:</b> entity searches apply <see cref="SearchFilters.NodeLabels"/> and
 /// <see cref="SearchFilters.PropertyFilters"/> (on <see cref="EntityNode.Attributes"/>) and ignore the fact-only
 /// fields. Fact searches apply every field: node labels to both endpoints, property filters to
@@ -391,16 +399,18 @@ public interface IGraphMaintenanceOperations
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Communities whose members are joined to this entity by a fact, one entry per such member (so a community
-    /// appears once per neighbour in it; core picks the most frequent). Used by upstream's
-    /// <c>determine_entity_community</c>.
+    /// Communities whose members are joined to this entity by a fact (in either direction), one entry per (fact,
+    /// membership edge) pair, as upstream's
+    /// <c>MATCH (c:Community)-[:HAS_MEMBER]-&gt;(m:Entity)-[:RELATES_TO]-(n:Entity {uuid: $entity_uuid})</c>: a community
+    /// appears once for every fact between the entity and one of its members. Core picks the most frequent. Used by
+    /// upstream's <c>determine_entity_community</c>.
     /// </summary>
     Task<IReadOnlyList<CommunityNode>> GetNeighborCommunitiesAsync(
         string entityUuid,
         CancellationToken cancellationToken = default);
 
-    /// <summary>How many distinct episodes mention each entity. Every requested id is a key; ids with no mentions
-    /// (or unknown ids) map to 0.</summary>
+    /// <summary>How many episode-to-entity links point at each entity (upstream's <c>count(*)</c> over
+    /// <c>MENTIONS</c>). Every requested id is a key; ids with no mentions (or unknown ids) map to 0.</summary>
     Task<IReadOnlyDictionary<string, int>> CountEpisodeMentionsAsync(
         IReadOnlyList<string> entityUuids,
         CancellationToken cancellationToken = default);

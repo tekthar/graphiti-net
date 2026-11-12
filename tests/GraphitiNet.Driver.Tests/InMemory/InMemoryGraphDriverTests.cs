@@ -199,7 +199,7 @@ public class InMemoryGraphDriverTests
 
             var loadedAlice = await loaded.EntityNodeOps.GetByUuidAsync(alice.Uuid);
             Assert.Equal("An engineer.", loadedAlice.Summary);
-            Assert.Equal(["Person"], loadedAlice.Labels);
+            Assert.Equal(["Person", "Entity"], loadedAlice.Labels);
             var nested = Assert.IsType<Dictionary<string, object?>>(loadedAlice.Attributes["nested"]);
             Assert.Equal(new List<object?> { 1L, "x", null }, (List<object?>)nested["list"]!);
             await loaded.EntityNodeOps.LoadEmbeddingsAsync(loadedAlice);

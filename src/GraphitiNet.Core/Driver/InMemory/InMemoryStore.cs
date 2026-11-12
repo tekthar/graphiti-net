@@ -134,7 +134,9 @@ internal static class RecordCopies
         Uuid = node.Uuid,
         Name = node.Name,
         GroupId = node.GroupId,
-        Labels = Distinct(node.Labels),
+
+        // Upstream saves every entity with the Entity label, and returns it.
+        Labels = Distinct([.. node.Labels, FilterEvaluator.EntityLabel]),
         CreatedAt = node.CreatedAt.ToUniversalTime(),
         NameEmbedding = includeEmbedding ? CopyVector(node.NameEmbedding) : null,
         Summary = node.Summary,
