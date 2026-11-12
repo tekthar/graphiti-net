@@ -51,7 +51,7 @@ public static partial class DedupHelpers
     public static string NormalizeStringExact(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
-        return Whitespace().Replace(name.ToLowerInvariant(), " ").Trim(PythonWhitespace);
+        return PythonText.Strip(Whitespace().Replace(PythonText.Lower(name), " "));
     }
 
     /// <summary>A fuzzier form that keeps only <c>a-z</c>, digits, apostrophes and single spaces, for shingles
@@ -59,7 +59,7 @@ public static partial class DedupHelpers
     public static string NormalizeNameForFuzzy(string name)
     {
         var normalized = NonFuzzyChars().Replace(NormalizeStringExact(name), " ");
-        normalized = normalized.Trim(PythonWhitespace);
+        normalized = PythonText.Strip(normalized);
         return Whitespace().Replace(normalized, " ");
     }
 
@@ -99,7 +99,7 @@ public static partial class DedupHelpers
     public static bool HasHighEntropy(string normalizedName)
     {
         ArgumentNullException.ThrowIfNull(normalizedName);
-        var tokenCount = normalizedName.Split(PythonWhitespace, StringSplitOptions.RemoveEmptyEntries).Length;
+        var tokenCount = PythonText.Split(normalizedName).Length;
         if (CodePointLength(normalizedName) < MinNameLength && tokenCount < MinTokenCount)
         {
             return false;
@@ -261,7 +261,7 @@ public static partial class DedupHelpers
         foreach (var (key, value) in extractedNode.Attributes.ToList())
         {
             var normalized = PythonText.Normalize(value);
-            if (normalized is null || (normalized is string s && string.IsNullOrWhiteSpace(s)))
+            if (normalized is null || (normalized is string s && PythonText.Strip(s).Length == 0))
             {
                 continue;
             }
@@ -305,7 +305,7 @@ public static partial class DedupHelpers
         return value switch
         {
             null => null,
-            string s => s.Trim(PythonWhitespace) is { Length: > 0 } trimmed ? trimmed : null,
+            string s => PythonText.Strip(s) is { Length: > 0 } trimmed ? trimmed : null,
             bool b => b,
             long or BigInteger => value,
             double d => double.IsNaN(d) ? null : d,
@@ -385,7 +385,7 @@ public static partial class DedupHelpers
                 .Where(candidate => candidate.Uuid != node.Uuid &&
                                     identityKey.Equals(IdentityKeyForNode(candidate, identityProperties)))
                 .OrderBy(candidate => candidate.CreatedAt)
-                .ThenBy(candidate => candidate.Uuid, StringComparer.Ordinal)
+                .ThenBy(candidate => candidate.Uuid, PythonText.CodePointOrder)
                 .ToList();
             if (matches.Count == 0)
             {
@@ -544,10 +544,8 @@ public static partial class DedupHelpers
         return count;
     }
 
-    // Python's str.strip() and \s cover the same ASCII and Unicode whitespace closely enough for names.
-    private static readonly char[] PythonWhitespace = [' ', '\t', '\n', '\r', '\v', '\f'];
-
-    [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
+    // Python's \s on str, which also matches U+001C to U+001F.
+    [GeneratedRegex(@"[\s\x1c-\x1f]+", RegexOptions.CultureInvariant)]
     private static partial Regex Whitespace();
 
     [GeneratedRegex(@"[^a-z0-9' ]", RegexOptions.CultureInvariant)]

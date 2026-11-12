@@ -9,6 +9,7 @@ the recordings of upstream's model answers, and the scripts that produce them.
 | `python/run_upstream.py` | Runs a dataset through Python Graphiti v0.31.2 on Neo4j and writes what it produced |
 | `recordings/<dataset>.upstream.json` | Upstream's entities, facts (with validity and expiry) and search results |
 | `recordings/<dataset>.recording.json` | Every prompt upstream sent and the answer it got, and every embedding |
+| `python/generate_differential_fixtures.py` | Writes the [differential test](#differential-tests) fixtures from upstream's own functions |
 
 ## How the comparison works
 
@@ -82,3 +83,49 @@ on LongMemEval conversations, using an LLM judge. `parity/python/lme_eval.py bui
 Graphiti, `tools/GraphitiNet.Eval` makes graphiti-net's, and `lme_eval.py judge` scores them. Results are in
 [results/](results/); always run a second upstream build as a control, since the judge must pick a side even between
 two runs of the same pipeline.
+## Differential tests
+
+The dataset runs above check whole pipelines. The differential tests check single functions: they prove that a
+ported function returns exactly what upstream's own function returns, on many more inputs than hand-written tests
+cover.
+
+`python/generate_differential_fixtures.py` imports the functions from `graphiti-core` 0.31.2, runs them on inputs
+generated from fixed seeds, and writes the inputs and upstream's outputs to
+`tests/GraphitiNet.Core.Tests/Differential/Fixtures/*.json`. The tests in `tests/GraphitiNet.Core.Tests/Differential/`
+load each file, call the C# port with the same inputs and compare. Floats may differ by 1e-9 relative where the
+arithmetic runs in a different order (NumPy against plain loops), or 1e-12 for logarithms; everything else must be
+identical, strings to the character. A failing test lists every differing case with its input.
+
+| Upstream module | Functions | Cases |
+| --- | --- | --- |
+| `search/search_utils.py`, `helpers.py` | `calculate_cosine_similarity`, `rrf` (rank constants, `min_score`, ties, division by zero), `maximal_marginal_relevance` (`min_score`, duplicate embeddings), `normalize_l2` | 601 |
+| `utils/maintenance/dedup_helpers.py` | `_normalize_string_exact`, `_normalize_name_for_fuzzy`, `_name_entropy`, `_has_high_entropy`, `_shingles`, `_minhash_signature`, `_lsh_bands`, `_jaccard_similarity`, and `_build_candidate_indexes` with `_resolve_with_similarity` end to end | 3,125 |
+| `utils/maintenance/edge_operations.py` | `resolve_edge_contradictions` and `_apply_temporal_invalidation` (every combination of start, end and expiry for one candidate, plus random sets), `enforce_edge_type_signatures`, `_edge_types_for_endpoints` | 3,947 |
+| `utils/maintenance/temporal_edge_utils.py` | `normalize_future_temporal_bounds`, `apply_extracted_timestamps`, and the `datetime.fromisoformat` parse behind it (hand-picked and fuzzed timestamps) | 2,056 |
+| `utils/text_utils.py` | `truncate_at_sentence`, `truncate_utf8_to_bytes`, `concatenate_episodes`, `concatenate_timeline` | 805 |
+| `utils/bulk_utils.py` | `compress_uuid_map`, `_build_directed_uuid_map`, `resolve_edge_pointers` | 466 |
+| `utils/maintenance/attribute_utils.py` | `cap_string_attributes`, `apply_capped_attributes` (both merge modes, on two Pydantic models the tests mirror in C#) | 600 |
+| `prompts/prompt_helpers.py` | `to_prompt_json` on nested values (big ints, float edge cases, non-string keys, tuples, indents, `ensure_ascii`) | 300 |
+| `utils/content_chunking.py` | `estimate_tokens`, `should_chunk`, `chunk_json_content`, `chunk_text_content`, `chunk_message_content`, `generate_covering_chunks` | 305 |
+| `utils/maintenance/community_operations.py` | `label_propagation` | 120 |
+
+Inputs include empty lists, ties, Arabic and other non-Latin text, emoji, the whitespace Python and .NET disagree on
+(U+001C to U+001F), timezone offsets, naive datetimes and `None` values. Upstream's `utc_now()` is frozen while the
+fixtures are generated, so an expiry set to "now" is recorded as `{"$now": true}` and the port must set the current
+time there.
+
+Some cases carry a marker where the port deliberately differs from upstream (each deviation is listed in
+[docs/api-compatibility.md](../docs/api-compatibility.md#behaviour-that-differs-from-upstream)):
+`"deviation"` (an out-of-range timestamp, which upstream raises on and the port skips), `"astral"` (content chunking
+measures UTF-16 code units, so text with emoji may chunk differently), `"unordered"` and `"order_dependent"` (results
+upstream orders by Python set iteration). Graphs on which upstream's `label_propagation` never stops are left out.
+
+To regenerate, with `graphiti-core==0.31.2` installed (no database or API key needed):
+
+```bash
+python -I parity/python/generate_differential_fixtures.py
+dotnet test tests/GraphitiNet.Core.Tests --filter "FullyQualifiedName~Differential"
+```
+
+The script checks the installed version and writes the same files on every run. To cover another function, add a
+`gen_*` section to the script and a test that reads its cases with `Fixture.Cases(file, function)`.

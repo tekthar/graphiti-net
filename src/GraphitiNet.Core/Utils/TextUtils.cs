@@ -51,20 +51,20 @@ public static partial class TextUtils
     /// </summary>
     public static string TruncateAtSentence(string text, int maxChars)
     {
-        if (string.IsNullOrEmpty(text) || PythonText.Len(text) <= maxChars)
+        if (string.IsNullOrEmpty(text) || PythonText.CodePointLength(text) <= maxChars)
         {
             return text;
         }
 
-        var truncated = PySlice(text, maxChars);
+        var truncated = PythonText.SliceTo(text, maxChars);
         var matches = SentenceEnd().Matches(truncated);
         if (matches.Count > 0)
         {
             var last = matches[^1];
-            return text[..(last.Index + last.Length)].TrimEnd();
+            return PythonText.RStrip(text[..(last.Index + last.Length)]);
         }
 
-        return truncated.TrimEnd();
+        return PythonText.RStrip(truncated);
     }
 
     /// <summary>
@@ -107,18 +107,7 @@ public static partial class TextUtils
         }));
     }
 
-    // Python slices by code point; .NET strings are UTF-16.
-    private static string PySlice(string text, int maxCodePoints)
-    {
-        var index = 0;
-        for (var count = 0; count < maxCodePoints && index < text.Length; count++)
-        {
-            index += char.IsHighSurrogate(text[index]) && index + 1 < text.Length ? 2 : 1;
-        }
-
-        return text[..index];
-    }
-
-    [GeneratedRegex(@"[.!?](?:\s|\z)", RegexOptions.CultureInvariant)]
+    // Python's \s on str also matches U+001C to U+001F.
+    [GeneratedRegex(@"[.!?](?:[\s\x1c-\x1f]|\z)", RegexOptions.CultureInvariant)]
     private static partial Regex SentenceEnd();
 }

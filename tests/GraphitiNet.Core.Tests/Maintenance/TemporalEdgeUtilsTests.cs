@@ -118,7 +118,10 @@ public class TemporalEdgeUtilsTests
     [InlineData("2025-04-30T10:15", "2025-04-30T10:15:00+00:00")]
     [InlineData("2025-04-30 10:15:30", "2025-04-30T10:15:30+00:00")]
     [InlineData("2025-04-30", "2025-04-30T00:00:00+00:00")]
-    [InlineData("2025-04-30T10:15:30.123456789Z", "2025-04-30T10:15:30.1234567+00:00")]
+    // Python keeps microseconds and drops further digits.
+    [InlineData("2025-04-30T10:15:30.123456789Z", "2025-04-30T10:15:30.123456+00:00")]
+    [InlineData("2025-W18-3T10", "2025-04-30T10:00:00+00:00")]
+    [InlineData("20250430X101530,5-0130", "2025-04-30T11:45:30.5+00:00")]
     public void TryParseIsoDateTime_AcceptsIsoForms(string text, string expected)
     {
         Assert.True(TemporalEdgeUtils.TryParseIsoDateTime(text, out var value));
@@ -132,6 +135,10 @@ public class TemporalEdgeUtilsTests
     [InlineData("April 30, 2025")]
     [InlineData("2025-13-01")]
     [InlineData("2025-04-30T25:00:00Z")]
+    [InlineData("2025-04-30T24:00:00")]
+    [InlineData("2025-04-30T")]
+    // Python raises OverflowError here; the port treats it as unparseable (a documented deviation).
+    [InlineData("0001-01-01T00:00:00+01:00")]
     public void TryParseIsoDateTime_RejectsOtherText(string text) =>
         Assert.False(TemporalEdgeUtils.TryParseIsoDateTime(text, out _));
 }

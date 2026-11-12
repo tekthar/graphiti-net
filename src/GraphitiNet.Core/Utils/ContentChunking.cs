@@ -11,6 +11,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using GraphitiNet.Llm;
 using GraphitiNet.Models;
+using GraphitiNet.Prompts;
 
 namespace GraphitiNet.Utils;
 
@@ -160,7 +161,7 @@ public static partial class ContentChunking
                 continue;
             }
 
-            var previous = words[i - 1].TrimEnd();
+            var previous = PythonText.RStrip(words[i - 1]);
             if (previous.Length == 0 || ".!?".Contains(previous[^1], StringComparison.Ordinal))
             {
                 continue;
@@ -233,7 +234,7 @@ public static partial class ContentChunking
 
         foreach (var rawParagraph in paragraphs)
         {
-            var paragraph = rawParagraph.Trim();
+            var paragraph = PythonText.Strip(rawParagraph);
             if (paragraph.Length == 0)
             {
                 continue;
@@ -529,7 +530,7 @@ public static partial class ContentChunking
 
         foreach (var rawSentence in sentences)
         {
-            var sentence = rawSentence.Trim();
+            var sentence = PythonText.Strip(rawSentence);
             if (sentence.Length == 0)
             {
                 continue;
@@ -593,7 +594,7 @@ public static partial class ContentChunking
                 }
             }
 
-            chunks.Add(text[start..end].Trim());
+            chunks.Add(PythonText.Strip(text[start..end]));
 
             var minProgress = Math.Max(1, chunkSizeChars - overlapChars);
             start = Math.Max(start + minProgress, end - overlapChars);
@@ -617,7 +618,7 @@ public static partial class ContentChunking
     private static List<string> ChunkSpeakerMessages(string content, int chunkSizeChars, int overlapChars)
     {
         var messages = SpeakerSplit().Split(content)
-            .Select(message => message.Trim())
+            .Select(PythonText.Strip)
             .Where(message => message.Length > 0)
             .ToList();
         if (messages.Count == 0)
@@ -864,19 +865,20 @@ public static partial class ContentChunking
 
     private static readonly char[] WordPunctuation = ['.', ',', '!', '?', ';', ':', '\'', '"', '(', ')', '[', ']', '{', '}'];
 
-    [GeneratedRegex(@"\n\s*\n")]
+    // \s here and below is Python's, which also matches U+001C to U+001F.
+    [GeneratedRegex(@"\n[\s\x1c-\x1f]*\n")]
     private static partial Regex ParagraphSplit();
 
-    [GeneratedRegex(@"(?<=[.!?])\s+")]
+    [GeneratedRegex(@"(?<=[.!?])[\s\x1c-\x1f]+")]
     private static partial Regex SentenceSplit();
 
-    [GeneratedRegex(@"\s+")]
+    [GeneratedRegex(@"[\s\x1c-\x1f]+")]
     private static partial Regex Whitespace();
 
-    [GeneratedRegex(@"^([A-Za-z_][A-Za-z0-9_\s]*):(.+?)(?=^[A-Za-z_][A-Za-z0-9_\s]*:|$)",
+    [GeneratedRegex(@"^([A-Za-z_][A-Za-z0-9_\s\x1c-\x1f]*):(.+?)(?=^[A-Za-z_][A-Za-z0-9_\s\x1c-\x1f]*:|$)",
         RegexOptions.Multiline | RegexOptions.Singleline)]
     private static partial Regex SpeakerPattern();
 
-    [GeneratedRegex(@"(?=^[A-Za-z_][A-Za-z0-9_\s]*:)", RegexOptions.Multiline)]
+    [GeneratedRegex(@"(?=^[A-Za-z_][A-Za-z0-9_\s\x1c-\x1f]*:)", RegexOptions.Multiline)]
     private static partial Regex SpeakerSplit();
 }

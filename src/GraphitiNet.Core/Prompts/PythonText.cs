@@ -198,7 +198,7 @@ public static class PythonText
         return value switch
         {
             null => throw new NotSupportedException("object of type 'NoneType' has no len()"),
-            string s => s.Length,
+            string s => CodePointLength(s),
             _ when TryGetMapping(value, out var entries) => entries.Count(),
             ICollection c => c.Count,
             IEnumerable items => items.Cast<object?>().Count(),
@@ -347,6 +347,176 @@ public static class PythonText
     }
 
     internal static string TypeName(object? value) => value?.GetType().Name ?? "NoneType";
+
+    /// <summary>
+    /// The characters Python's <c>str.isspace()</c>, <c>str.split()</c>, <c>str.strip()</c> and the <c>\s</c> of a
+    /// <c>str</c> regex treat as whitespace. .NET's <see cref="char.IsWhiteSpace(char)"/> and regex <c>\s</c> agree
+    /// except for the information separators U+001C to U+001F, which only Python counts.
+    /// </summary>
+    internal static readonly char[] Whitespace =
+    [
+        '\t', '\n', '\v', '\f', '\r', '\u001c', '\u001d', '\u001e', '\u001f', ' ', '\u0085', '\u00a0', '\u1680',
+        '\u2000', '\u2001', '\u2002', '\u2003', '\u2004', '\u2005', '\u2006', '\u2007', '\u2008', '\u2009',
+        '\u200a', '\u2028', '\u2029', '\u202f', '\u205f', '\u3000',
+    ];
+
+    /// <summary>A regex class body matching Python's <c>\s</c> on <c>str</c>: <c>[\s\x1c-\x1f]</c>.</summary>
+    internal const string WhitespaceClass = @"\s\x1c-\x1f";
+
+    /// <summary>Python's <c>len(str)</c>: the number of code points (a surrogate pair counts once).</summary>
+    internal static int CodePointLength(string text)
+    {
+        var count = text.Length;
+        for (var i = 0; i + 1 < text.Length; i++)
+        {
+            if (char.IsHighSurrogate(text[i]) && char.IsLowSurrogate(text[i + 1]))
+            {
+                count--;
+                i++;
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Python's <c>text[:stop]</c>: the first <paramref name="stop"/> code points, or for a negative
+    /// <paramref name="stop"/> all but the last <c>-stop</c>.
+    /// </summary>
+    internal static string SliceTo(string text, int stop)
+    {
+        var length = CodePointLength(text);
+        stop = stop < 0 ? Math.Max(0, length + stop) : Math.Min(stop, length);
+        var index = 0;
+        for (var count = 0; count < stop; count++)
+        {
+            index += char.IsHighSurrogate(text[index]) && index + 1 < text.Length && char.IsLowSurrogate(text[index + 1])
+                ? 2
+                : 1;
+        }
+
+        return text[..index];
+    }
+
+    /// <summary>
+    /// Python's string order: by code point. <see cref="StringComparer.Ordinal"/> compares UTF-16 code units, which
+    /// puts characters outside the Basic Multilingual Plane (emoji) before U+E000 to U+FFFF; Python puts them after.
+    /// </summary>
+    internal static StringComparer CodePointOrder { get; } = new CodePointComparer();
+
+    private sealed class CodePointComparer : StringComparer
+    {
+        public override int Compare(string? x, string? y)
+        {
+            if (x is null || y is null)
+            {
+                return x is null ? (y is null ? 0 : -1) : 1;
+            }
+
+            var i = 0;
+            var j = 0;
+            while (i < x.Length && j < y.Length)
+            {
+                var a = Rune.GetRuneAt(x, i);
+                var b = Rune.GetRuneAt(y, j);
+                if (a != b)
+                {
+                    return a.Value.CompareTo(b.Value);
+                }
+
+                i += a.Utf16SequenceLength;
+                j += b.Utf16SequenceLength;
+            }
+
+            return (x.Length - i).CompareTo(y.Length - j);
+        }
+
+        public override bool Equals(string? x, string? y) => string.Equals(x, y, StringComparison.Ordinal);
+
+        public override int GetHashCode(string obj) => obj.GetHashCode(StringComparison.Ordinal);
+    }
+
+    /// <summary>Python's <c>str.isspace()</c> for one character.</summary>
+    internal static bool IsSpace(char c) => char.IsWhiteSpace(c) || c is >= '\u001c' and <= '\u001f';
+
+    /// <summary>Python's <c>str.strip()</c>.</summary>
+    internal static string Strip(string text) => text.Trim(Whitespace);
+
+    /// <summary>Python's <c>str.rstrip()</c>.</summary>
+    internal static string RStrip(string text) => text.TrimEnd(Whitespace);
+
+    /// <summary>Python's <c>str.split()</c> with no separator: runs of whitespace split, and empty parts are
+    /// dropped.</summary>
+    internal static string[] Split(string text) => text.Split(Whitespace, StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>
+    /// Python's <c>str.lower()</c>: Unicode full lowercase mapping. It differs from
+    /// <see cref="string.ToLowerInvariant"/> for U+0130 (<c>İ</c>, which Python lowers to <c>i</c> plus a combining
+    /// dot and .NET leaves alone) and for capital sigma at the end of a word, which Python lowers to final sigma
+    /// (<c>ς</c>).
+    /// </summary>
+    internal static string Lower(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var sb = new StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                sb.Append(Rune.ToLowerInvariant(new Rune(c, text[i + 1])).ToString());
+                i++;
+            }
+            else if (c == '\u0130')
+            {
+                sb.Append("i\u0307");
+            }
+            else if (c == '\u03a3')
+            {
+                sb.Append(IsFinalSigma(text, i) ? '\u03c2' : '\u03c3');
+            }
+            else
+            {
+                sb.Append(char.ToLowerInvariant(c));
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    // CPython's handle_capital_sigma: \p{cased} \p{case-ignorable}* U+03A3 !(\p{case-ignorable}* \p{cased}).
+    private static bool IsFinalSigma(string text, int index)
+    {
+        var j = index - 1;
+        while (j >= 0 && IsCaseIgnorable(text[j]))
+        {
+            j--;
+        }
+
+        if (j < 0 || !IsCased(text[j]))
+        {
+            return false;
+        }
+
+        j = index + 1;
+        while (j < text.Length && IsCaseIgnorable(text[j]))
+        {
+            j++;
+        }
+
+        return j == text.Length || !IsCased(text[j]);
+    }
+
+    private static bool IsCased(char c) =>
+        CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.LowercaseLetter or UnicodeCategory.UppercaseLetter
+            or UnicodeCategory.TitlecaseLetter ||
+        char.ToLowerInvariant(c) != c || char.ToUpperInvariant(c) != c;
+
+    private static bool IsCaseIgnorable(char c) =>
+        CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark
+            or UnicodeCategory.Format or UnicodeCategory.ModifierLetter or UnicodeCategory.ModifierSymbol ||
+        c is '\'' or '.' or ':' or '\u00b7' or '\u0387' or '\u055f' or '\u05f4' or '\u2018' or '\u2019' or '\u2024'
+            or '\u2027' or '\ufe13' or '\ufe52' or '\ufe55' or '\uff07' or '\uff0e' or '\uff1a';
 
     private static void AppendRepr(StringBuilder sb, object? value)
     {

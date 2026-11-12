@@ -90,72 +90,82 @@ public static partial class TemporalEdgeUtils
     }
 
     /// <summary>
-    /// Upstream's <c>ensure_utc(datetime.fromisoformat(text.replace('Z', '+00:00')))</c>: parses an ISO 8601 date or
-    /// date-time, taking a value without an offset to be UTC, and returns it in UTC.
+    /// Upstream's <c>ensure_utc(datetime.fromisoformat(text.replace('Z', '+00:00')))</c>: parses a timestamp the way
+    /// Python 3.13 does (see <see cref="PythonDateTime"/>), taking a value without an offset to be UTC, and returns it
+    /// in UTC.
     /// </summary>
     /// <remarks>
-    /// Accepts what Python 3.11's <c>fromisoformat</c> accepts in practice: <c>YYYY-MM-DD</c>, optionally followed by
-    /// <c>T</c> or a space and <c>HH:MM</c>, <c>HH:MM:SS</c> or <c>HH:MM:SS.fff…</c>, optionally followed by an offset
-    /// (<c>+HH:MM</c>, <c>+HHMM</c> or <c>Z</c>). Fractions longer than 7 digits are cut to 7 (.NET's resolution).
+    /// Deliberate deviation: where the conversion to UTC leaves the range of datetimes (<c>0001-01-01T00:00+01:00</c>),
+    /// Python raises <c>OverflowError</c>, which upstream does not catch, so one odd timestamp from the LLM fails the
+    /// whole extraction. The port treats such a value as unparseable instead, as it does any text Python rejects with
+    /// <c>ValueError</c>.
     /// </remarks>
     internal static bool TryParseIsoDateTime(string text, out DateTimeOffset value)
     {
         value = default;
-        var normalized = text.Replace("Z", "+00:00", StringComparison.Ordinal);
-        var match = IsoDateTime().Match(normalized);
-        if (!match.Success)
-        {
-            return false;
-        }
-
-        var date = match.Groups["date"].Value;
-        var time = match.Groups["time"].Success ? match.Groups["time"].Value : "00:00:00";
-        if (time.Length == 5)
-        {
-            time += ":00";
-        }
-
-        var fraction = match.Groups["fraction"].Success ? match.Groups["fraction"].Value : "";
-        if (fraction.Length > 7)
-        {
-            fraction = fraction[..7];
-        }
-
-        var offset = match.Groups["offset"].Success ? match.Groups["offset"].Value : "+00:00";
-        if (offset.Length == 5)
-        {
-            offset = offset[..3] + ":" + offset[3..];
-        }
-
-        var composed = $"{date}T{time}{(fraction.Length > 0 ? "." + fraction : "")}{offset}";
-        var format = fraction.Length > 0 ? $"yyyy-MM-dd'T'HH:mm:ss.{new string('F', fraction.Length)}zzz" : "yyyy-MM-dd'T'HH:mm:sszzz";
-        if (!DateTimeOffset.TryParseExact(composed, format, CultureInfo.InvariantCulture, DateTimeStyles.None,
-                out var parsed))
-        {
-            return false;
-        }
-
-        value = parsed.ToUniversalTime();
-        return true;
+        return PythonDateTime.TryFromIsoFormat(text.Replace("Z", "+00:00", StringComparison.Ordinal), out var parsed) &&
+               parsed.TryToUtc(out value);
     }
 
-    [GeneratedRegex(
-        @"^(?<date>\d{4}-\d{2}-\d{2})(?:[T ](?<time>\d{2}:\d{2}(?::\d{2})?)(?:[.,](?<fraction>\d+))?)?(?<offset>[+-]\d{2}:?\d{2})?$",
-        RegexOptions.CultureInvariant)]
-    private static partial Regex IsoDateTime();
+    // Upstream's patterns, compiled with Python's re.IGNORECASE semantics (see PythonIgnoreCase).
+    private static readonly Regex FutureAssertionRegex = PythonIgnoreCase(
+        @"\b(will|shall|is going to|are going to|going to|plans? to|planned to|planning to|intends? to|intended to|expects? to|expected to|promises? to|promised to|scheduled to|is scheduled to|are scheduled to|set to|aims? to|aimed to|committed to)\b|[a-z]+'ll\b");
 
-    [GeneratedRegex(
-        @"\b(will|shall|is going to|are going to|going to|plans? to|planned to|planning to|intends? to|intended to|expects? to|expected to|promises? to|promised to|scheduled to|is scheduled to|are scheduled to|set to|aims? to|aimed to|committed to)\b|[a-z]+'ll\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex FutureAssertion();
+    private static readonly Regex DeadlineRegex = PythonIgnoreCase(
+        @"\b(by|before|no later than|deadline|due by|due on)\b");
 
-    [GeneratedRegex(
-        @"\b(by|before|no later than|deadline|due by|due on)\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex Deadline();
+    private static readonly Regex OngoingStateEndRegex = PythonIgnoreCase(
+        @"\b(until|through|thru|expires?|expired|ends?|ended|ending|stops?|stopped|ceases?|ceased|no longer)\b");
 
-    [GeneratedRegex(
-        @"\b(until|through|thru|expires?|expired|ends?|ended|ending|stops?|stopped|ceases?|ceased|no longer)\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex OngoingStateEnd();
+    private static Regex FutureAssertion() => FutureAssertionRegex;
+
+    private static Regex Deadline() => DeadlineRegex;
+
+    private static Regex OngoingStateEnd() => OngoingStateEndRegex;
+
+    /// <summary>
+    /// Builds a .NET regex that matches as Python's <c>re.compile(pattern, re.IGNORECASE)</c> does on <c>str</c>, for
+    /// patterns made of ASCII letters, <c>\b</c>, <c>[a-z]</c> and plain punctuation.
+    /// </summary>
+    /// <remarks>
+    /// Two things differ from .NET's <see cref="RegexOptions.IgnoreCase"/> and <c>\b</c>. Python folds case with the
+    /// simple Unicode mapping, so <c>i</c> also matches <c>İ</c> and <c>ı</c>, <c>k</c> the Kelvin sign <c>K</c>, and
+    /// <c>s</c> the long s <c>ſ</c>. And Python's word characters are letters, numbers and <c>_</c>, so a combining mark
+    /// (an Arabic vowel sign, say) is a word boundary in Python and not in .NET.
+    /// </remarks>
+    private static Regex PythonIgnoreCase(string pattern)
+    {
+        const string word = @"[\p{L}\p{N}_]";
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < pattern.Length; i++)
+        {
+            var c = pattern[i];
+            if (pattern.AsSpan(i).StartsWith(@"\b"))
+            {
+                sb.Append(CultureInfo.InvariantCulture, $"(?:(?<={word})(?!{word})|(?<!{word})(?={word}))");
+                i++;
+            }
+            else if (pattern.AsSpan(i).StartsWith("[a-z]"))
+            {
+                sb.Append("[a-zA-Z\u0130\u0131\u017f\u212a]");
+                i += 4;
+            }
+            else if (c is >= 'a' and <= 'z')
+            {
+                sb.Append('[').Append(c).Append(char.ToUpperInvariant(c)).Append(c switch
+                {
+                    'i' => "\u0130\u0131",
+                    'k' => "\u212a",
+                    's' => "\u017f",
+                    _ => "",
+                }).Append(']');
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+
+        return new Regex(sb.ToString(), RegexOptions.CultureInvariant);
+    }
 }
