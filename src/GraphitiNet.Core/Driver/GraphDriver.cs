@@ -136,6 +136,30 @@ public interface IEpisodeNodeOperations : INodeOperations<EpisodicNode>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// For each entity id, the ids of the episodes in the entity's own group that mention it, without duplicates, in
+    /// <see cref="GetByEntityNodeUuidAsync"/>'s order. Every requested id is a key; an unknown entity maps to an empty
+    /// list. The search episode-access filter uses it to fetch every entity's episodes in one call.
+    /// </summary>
+    /// <remarks>The default implementation calls <see cref="GetByEntityNodeUuidAsync"/> once per entity. It cannot see
+    /// the entity's group, so it keeps every mentioning episode (core always writes a mention in the entity's group,
+    /// so this differs only for hand-made cross-group links). Backends should override it with one query that applies
+    /// the group rule.</remarks>
+    async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetEpisodeUuidsByEntityNodeUuidsAsync(
+        IReadOnlyList<string> entityNodeUuids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entityNodeUuids);
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var uuid in entityNodeUuids.Distinct(StringComparer.Ordinal))
+        {
+            var episodes = await GetByEntityNodeUuidAsync(uuid, cancellationToken).ConfigureAwait(false);
+            result[uuid] = [.. episodes.Select(e => e.Uuid).Distinct(StringComparer.Ordinal)];
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// The <paramref name="lastN"/> most recent episodes with <c>ValidAt</c> at or before
     /// <paramref name="referenceTime"/>, returned oldest first (upstream sorts by <c>valid_at</c> descending, takes
     /// <c>last_n</c>, then reverses).
@@ -216,8 +240,11 @@ public interface IEntityNodeOperations : INodeOperations<EntityNode>
 
     /// <summary>
     /// Up to <paramref name="limit"/> entities in <paramref name="groupId"/> whose <see cref="EntityNode.Attributes"/>
-    /// equal every given value and, if <paramref name="nodeLabels"/> is given, that carry those labels. Upstream's
-    /// optional <c>node_get_by_attribute_values</c>, used to find identity-property dedup candidates.
+    /// equal every given value and, if <paramref name="nodeLabels"/> is given, that carry all those labels (every
+    /// entity carries <c>Entity</c>). Values compare as JSON: strings exactly (case-sensitive), numbers by value
+    /// (<c>1</c> equals <c>1.0</c>), booleans and <see langword="null"/> as themselves; a missing attribute never
+    /// matches. No attributes match nothing. Ordered by <c>CreatedAt</c>, then <c>Uuid</c>. Upstream's optional
+    /// <c>node_get_by_attribute_values</c>, used to find identity-property dedup candidates.
     /// </summary>
     /// <remarks>Optional, as upstream (none of upstream's bundled drivers implement it): the default throws
     /// <see cref="NotSupportedException"/>, and deduplication then finds identity matches only among the name and

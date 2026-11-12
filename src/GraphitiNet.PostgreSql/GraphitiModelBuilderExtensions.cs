@@ -60,9 +60,15 @@ public static class GraphitiModelBuilderExtensions
             b.Property(e => e.Attributes).HasColumnName("attributes").HasColumnType("jsonb");
             b.Property(e => e.NameEmbedding).HasColumnName("name_embedding").HasColumnType(vectorType);
             ConfigureSearch(b, t, e => e.SearchVector, "name", "summary");
-            b.HasIndex(e => e.Name).HasDatabaseName($"ix_{t}_name");
+            // Exact-name lookups (GetByNamesAsync) are always scoped by group.
+            b.HasIndex(e => new { e.GroupId, e.Name }).HasDatabaseName($"ix_{t}_group_id_name");
             b.HasIndex(e => e.CreatedAt).HasDatabaseName($"ix_{t}_created_at");
             b.HasIndex(e => e.Labels).HasMethod("gin").HasDatabaseName($"ix_{t}_labels");
+            // Containment (@>) lookups by attribute values (GetByAttributeValuesAsync).
+            b.HasIndex(e => e.Attributes)
+                .HasMethod("gin")
+                .HasOperators("jsonb_path_ops")
+                .HasDatabaseName($"ix_{t}_attributes");
             b.HasIndex(e => e.NameEmbedding)
                 .HasMethod("hnsw")
                 .HasOperators("vector_cosine_ops")

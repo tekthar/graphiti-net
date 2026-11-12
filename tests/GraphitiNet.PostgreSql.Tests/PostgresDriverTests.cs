@@ -61,9 +61,14 @@ public sealed class PostgresDriverTests : IAsyncLifetime
         await driver.GraphOps.BuildIndicesAndConstraintsAsync();
         await driver.EntityNodeOps.SaveAsync(Entity("kept"));
         await ExecuteAsync($"DROP TABLE \"{_schema}\".community_edges");
+        await ExecuteAsync($"DROP INDEX \"{_schema}\".ix_entities_attributes");
 
         await driver.GraphOps.BuildIndicesAndConstraintsAsync();
 
+        // A missing index on an existing table (as after an upgrade that adds one) is created too.
+        Assert.Single(await QueryAsync<string>(
+            "SELECT indexname::text FROM pg_indexes WHERE schemaname = $1 AND indexname = 'ix_entities_attributes'",
+            _schema));
         Assert.Empty(await driver.CommunityEdgeOps.GetByGroupIdsAsync([Group]));
         Assert.Single(await driver.EntityNodeOps.GetByGroupIdsAsync([Group]));
     }

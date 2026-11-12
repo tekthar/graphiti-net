@@ -368,8 +368,12 @@ public static class SearchUtils
     /// <summary>
     /// For each entity, the ids of the episodes in the entity's group that mention it (graphiti-net helper, used by
     /// <see cref="IEpisodeAccessFilter"/> and to report an entity's source episodes). One
-    /// <see cref="IEpisodeNodeOperations.GetByEntityNodeUuidAsync"/> call per distinct entity, run concurrently.
+    /// <see cref="IEpisodeNodeOperations.GetEpisodeUuidsByEntityNodeUuidsAsync"/> call for every distinct entity.
     /// </summary>
+    /// <param name="driver">The graph driver.</param>
+    /// <param name="nodes">The entities.</param>
+    /// <param name="maxCoroutines">Unused since the lookup became one batched call; kept for compatibility.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
     /// <returns>Every distinct entity id as a key, each with its episode ids in the driver's order.</returns>
     public static async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetMentioningEpisodeUuidsAsync(
         IGraphDriver driver,
@@ -380,20 +384,19 @@ public static class SearchUtils
         ArgumentNullException.ThrowIfNull(driver);
         ArgumentNullException.ThrowIfNull(nodes);
 
-        var distinct = nodes.DistinctBy(node => node.Uuid).ToList();
-        var episodes = await Concurrency.SemaphoreGatherAsync(
-                distinct.Select<EntityNode, Func<Task<IReadOnlyList<EpisodicNode>>>>(node => () =>
-                    driver.EpisodeNodeOps.GetByEntityNodeUuidAsync(node.Uuid, cancellationToken)),
-                maxCoroutines,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
-        for (var i = 0; i < distinct.Count; i++)
+        _ = maxCoroutines;
+        var uuids = nodes.Select(node => node.Uuid).Distinct(StringComparer.Ordinal).ToList();
+        if (uuids.Count == 0)
         {
-            var groupId = distinct[i].GroupId;
-            result[distinct[i].Uuid] =
-                [.. episodes[i].Where(e => e.GroupId == groupId).Select(e => e.Uuid).Distinct(StringComparer.Ordinal)];
+            return new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        }
+
+        var found = await driver.EpisodeNodeOps.GetEpisodeUuidsByEntityNodeUuidsAsync(uuids, cancellationToken)
+            .ConfigureAwait(false);
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var uuid in uuids)
+        {
+            result[uuid] = found.TryGetValue(uuid, out var episodes) ? episodes : [];
         }
 
         return result;

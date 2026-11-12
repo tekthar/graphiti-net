@@ -32,6 +32,43 @@ internal sealed class EpisodeNodeOperations(DriverCore core)
             cancellationToken);
     }
 
+    public Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetEpisodeUuidsByEntityNodeUuidsAsync(
+        IReadOnlyList<string> entityNodeUuids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entityNodeUuids);
+        var uuids = entityNodeUuids.Distinct(StringComparer.Ordinal).ToArray();
+        var result = uuids.ToDictionary(u => u, _ => (IReadOnlyList<string>)[], StringComparer.Ordinal);
+        if (uuids.Length == 0)
+        {
+            return Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<string>>>(result);
+        }
+
+        var n = Core.Names;
+        var sql = "SELECT m.target_node_uuid, ep.uuid "
+            + $"FROM {n.Table(SqlNames.EpisodicEdges)} m "
+            + $"JOIN {n.Table(SqlNames.Entities)} en ON en.uuid = m.target_node_uuid "
+            + $"JOIN {n.Table(SqlNames.Episodes)} ep ON ep.uuid = m.source_node_uuid AND ep.group_id = en.group_id "
+            + "WHERE m.target_node_uuid = ANY($1) "
+            + "GROUP BY m.target_node_uuid, ep.uuid, ep.valid_at ORDER BY m.target_node_uuid, ep.valid_at, ep.uuid";
+        return Core.WithConnectionAsync<IReadOnlyDictionary<string, IReadOnlyList<string>>>(
+            async connection =>
+            {
+                await using var command = new NpgsqlCommand(sql, connection);
+                command.Parameters.Add(Params.TextArray(uuids));
+                var rows = await DriverCore.ReadListAsync(
+                    command, r => (Entity: r.GetString(0), Episode: r.GetString(1)), cancellationToken)
+                    .ConfigureAwait(false);
+                foreach (var group in rows.GroupBy(r => r.Entity, StringComparer.Ordinal))
+                {
+                    result[group.Key] = [.. group.Select(r => r.Episode)];
+                }
+
+                return result;
+            },
+            cancellationToken);
+    }
+
     public async Task<IReadOnlyList<EpisodicNode>> RetrieveEpisodesAsync(
         DateTimeOffset referenceTime,
         int lastN = 3,
@@ -114,6 +151,72 @@ internal sealed class EntityNodeOperations(DriverCore core)
 {
     public override Task UpsertAsync(NpgsqlConnection connection, IReadOnlyList<EntityNode> items, CancellationToken ct) =>
         Core.UpsertEntitiesAsync(connection, items, ct);
+
+    public Task<IReadOnlyList<EntityNode>> GetByNamesAsync(
+        IReadOnlyList<string> names,
+        IReadOnlyList<string> groupIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        ArgumentNullException.ThrowIfNull(groupIds);
+        var nameArray = names.Where(x => !string.IsNullOrEmpty(x)).Distinct(StringComparer.Ordinal).ToArray();
+        var groupArray = groupIds.Where(x => !string.IsNullOrEmpty(x)).Distinct(StringComparer.Ordinal).ToArray();
+        if (nameArray.Length == 0 || groupArray.Length == 0)
+        {
+            return Task.FromResult<IReadOnlyList<EntityNode>>([]);
+        }
+
+        // Exact, case-sensitive match, as upstream's get_by_names; uses the (group_id, name) index.
+        return ListAsync(
+            q => q.Where(e => groupArray.Contains(e.GroupId) && nameArray.Contains(e.Name)),
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<EntityNode>> GetByAttributeValuesAsync(
+        string groupId,
+        IReadOnlyDictionary<string, object?> attributes,
+        IReadOnlyList<string>? nodeLabels = null,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(groupId);
+        ArgumentNullException.ThrowIfNull(attributes);
+        if (attributes.Count == 0 || limit <= 0)
+        {
+            return Task.FromResult<IReadOnlyList<EntityNode>>([]);
+        }
+
+        // Containment (@>) uses the jsonb_path_ops GIN index; the per-key equality makes nested values match exactly
+        // rather than as subsets. jsonb compares numbers by value, so 1 equals 1.0.
+        var b = new SqlBuilder();
+        var conditions = new List<string>
+        {
+            $"n.group_id = {b.Text(groupId)}",
+            $"n.attributes @> {b.Param(JsonValues.Serialize(attributes.ToDictionary(p => p.Key, p => p.Value)), NpgsqlTypes.NpgsqlDbType.Jsonb)}",
+        };
+        foreach (var (key, value) in attributes)
+        {
+            conditions.Add(
+                $"(n.attributes -> {b.Text(key)}) = {b.Param(JsonValues.SerializeValue(value), NpgsqlTypes.NpgsqlDbType.Jsonb)}");
+        }
+
+        if (nodeLabels is not null)
+        {
+            conditions.Add($"n.labels @> {b.TextArray(nodeLabels)}");
+        }
+
+        b.Append($"SELECT {RecordMapper.EntityColumns("n")} FROM {Core.Names.Table(SqlNames.Entities)} AS n WHERE ")
+            .Append(string.Join(" AND ", conditions))
+            .Append($" ORDER BY n.created_at, n.uuid LIMIT {b.Int(limit)}");
+        return Core.WithConnectionAsync<IReadOnlyList<EntityNode>>(
+            async connection =>
+            {
+                await using var command = b.ToCommand(connection);
+                return await DriverCore.ReadListAsync(command, RecordMapper.ReadEntity, cancellationToken)
+                    .ConfigureAwait(false);
+            },
+            cancellationToken);
+    }
 
     public async Task LoadEmbeddingsAsync(EntityNode node, CancellationToken cancellationToken = default)
     {

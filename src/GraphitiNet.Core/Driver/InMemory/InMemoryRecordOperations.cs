@@ -210,6 +210,41 @@ internal sealed class InMemoryEpisodeNodeOperations(InMemoryStore store)
                 .ToList(),
             cancellationToken);
 
+    public Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetEpisodeUuidsByEntityNodeUuidsAsync(
+        IReadOnlyList<string> entityNodeUuids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(entityNodeUuids);
+        return Read<IReadOnlyDictionary<string, IReadOnlyList<string>>>(
+            () =>
+            {
+                var wanted = entityNodeUuids.ToHashSet(StringComparer.Ordinal);
+                var result = wanted.ToDictionary(
+                    uuid => uuid, _ => (IReadOnlyList<string>)[], StringComparer.Ordinal);
+                foreach (var group in Store.EpisodicEdges.Values
+                    .Where(e => wanted.Contains(e.TargetNodeUuid))
+                    .GroupBy(e => e.TargetNodeUuid, StringComparer.Ordinal))
+                {
+                    if (!Store.Entities.TryGetValue(group.Key, out var entity))
+                    {
+                        continue;
+                    }
+
+                    result[group.Key] = [.. group
+                        .Select(e => Store.Episodes.GetValueOrDefault(e.SourceNodeUuid))
+                        .OfType<EpisodicNode>()
+                        .Where(episode => episode.GroupId == entity.GroupId)
+                        .DistinctBy(episode => episode.Uuid, StringComparer.Ordinal)
+                        .OrderBy(episode => episode.ValidAt)
+                        .ThenBy(episode => episode.Uuid, StringComparer.Ordinal)
+                        .Select(episode => episode.Uuid)];
+                }
+
+                return result;
+            },
+            cancellationToken);
+    }
+
     public Task<IReadOnlyList<EpisodicNode>> RetrieveEpisodesAsync(
         DateTimeOffset referenceTime,
         int lastN = 3,
@@ -303,6 +338,40 @@ internal sealed class InMemoryEntityNodeOperations(InMemoryStore store)
             return Task.FromResult(result);
         }
     }
+
+    public Task<IReadOnlyList<EntityNode>> GetByAttributeValuesAsync(
+        string groupId,
+        IReadOnlyDictionary<string, object?> attributes,
+        IReadOnlyList<string>? nodeLabels = null,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(groupId);
+        ArgumentNullException.ThrowIfNull(attributes);
+        if (attributes.Count == 0 || limit <= 0)
+        {
+            return Task.FromResult<IReadOnlyList<EntityNode>>([]);
+        }
+
+        var wanted = attributes.ToDictionary(p => p.Key, p => JsonValues.Normalize(p.Value), StringComparer.Ordinal);
+        return Read<IReadOnlyList<EntityNode>>(
+            () => [.. Store.Entities.Values
+                .Where(n => n.GroupId == groupId
+                    && (nodeLabels is null || nodeLabels.All(label => n.Labels.Contains(label)))
+                    && wanted.All(p => n.Attributes.TryGetValue(p.Key, out var value) && JsonEquals(value, p.Value)))
+                .OrderBy(n => n.CreatedAt)
+                .ThenBy(n => n.Uuid, StringComparer.Ordinal)
+                .Take(limit)
+                .Select(ToResult)],
+            cancellationToken);
+    }
+
+    /// <summary>Equality as JSON values: numbers by value, everything else by its JSON form.</summary>
+    private static bool JsonEquals(object? stored, object? expected) =>
+        JsonValues.AsNumber(stored) is { } a && JsonValues.AsNumber(expected) is { } b
+            ? a.Equals(b)
+            : JsonValues.AsNumber(stored) is null && JsonValues.AsNumber(expected) is null
+                && System.Text.Json.JsonSerializer.Serialize(stored) == System.Text.Json.JsonSerializer.Serialize(expected);
 
     public Task LoadEmbeddingsAsync(EntityNode node, CancellationToken cancellationToken = default)
     {

@@ -19,8 +19,8 @@ await using var driver = new PostgresDriver("Host=localhost;Database=graphiti;Us
 await driver.GraphOps.BuildIndicesAndConstraintsAsync(); // once: creates the extension, schema, tables and indexes
 ```
 
-`BuildIndicesAndConstraintsAsync` is idempotent: it creates the `vector` extension, the schema and any missing tables
-with their indexes, and leaves existing tables and data alone. It builds the DDL from the same EF Core model a
+`BuildIndicesAndConstraintsAsync` is idempotent: it creates the `vector` extension, the schema, any missing tables
+with their indexes, and any index a newer version added to an existing table, and leaves existing data alone. It builds the DDL from the same EF Core model a
 migration would use, so the two never disagree. It runs in one transaction under an advisory lock, so several app
 instances may call it at start-up. `BuildIndicesAndConstraintsAsync(deleteExisting: true)` drops the nine tables
 first: **all graph data is lost**.
@@ -135,7 +135,7 @@ collation, so paging by id is ordinal. Every table has a `group_id` column and i
 | Table | Holds | Notable columns and indexes |
 | --- | --- | --- |
 | `episodes` | Episodes | `content`, `source`, `source_description`, `valid_at`, `entity_edges text[]`, `episode_metadata jsonb`; full-text over content, source and source description |
-| `entities` | Entities | `name`, `summary`, `labels text[]` (GIN), `attributes jsonb`, `name_embedding vector(N)` (HNSW, cosine); full-text over name and summary |
+| `entities` | Entities | `name` (indexed with `group_id` for exact-name lookups), `summary`, `labels text[]` (GIN), `attributes jsonb` (GIN `jsonb_path_ops`, for attribute-value lookups), `name_embedding vector(N)` (HNSW, cosine); full-text over name and summary |
 | `communities` | Communities | `name`, `summary`, `name_embedding vector(N)` (HNSW); full-text over name |
 | `sagas` | Sagas | `name` (indexed with `group_id`), summary bookkeeping |
 | `entity_edges` | Facts | `source_node_uuid`, `target_node_uuid`, `name`, `fact`, `episodes text[]`, the four temporal columns (indexed), `attributes jsonb`, `fact_embedding vector(N)` (HNSW); full-text over name and fact |

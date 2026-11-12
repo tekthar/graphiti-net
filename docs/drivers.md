@@ -56,9 +56,15 @@ conformance suite checks:
 - `EntityNodeOps.GetByNamesAsync`: entities whose name equals one of the names exactly (case-sensitive) in any of the
   groups; empty names or groups return nothing. The default implementation scans `GetByGroupIdsAsync`; override it
   with an indexed lookup.
-- `EntityNodeOps.GetByAttributeValuesAsync` (optional): entities in one group whose attributes equal all the given
-  values, optionally with given labels. The default throws `NotSupportedException`, as upstream's drivers do not
-  implement it either; entity deduplication then skips the identity-property lookup.
+- `EntityNodeOps.GetByAttributeValuesAsync` (optional): up to `limit` entities in one group whose attributes equal all
+  the given values (as JSON: strings exactly, numbers by value; a missing attribute never matches; no values match
+  nothing), optionally carrying all the given labels, by `CreatedAt` then `Uuid`. The default throws
+  `NotSupportedException`, as upstream's drivers do not implement it either; entity deduplication then skips the
+  identity-property lookup. The in-memory and PostgreSQL drivers implement it.
+- `EpisodeNodeOps.GetEpisodeUuidsByEntityNodeUuidsAsync`: for many entities at once, the ids of the episodes in each
+  entity's own group that mention it; every requested id is a key (empty for unknown entities). The default calls
+  `GetByEntityNodeUuidAsync` per entity and cannot apply the group rule; override it with one query. The search
+  episode-access filter uses it.
 - `GetPreviousEpisodeUuidAsync`: the saga's latest episode other than the current one, by `ValidAt` then `CreatedAt`,
   both descending.
 

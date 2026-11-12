@@ -52,6 +52,16 @@ internal static class SchemaBuilder
                 existing.UnionWith(await DriverCore.ReadListAsync(command, r => r.GetString(0), ct).ConfigureAwait(false));
             }
 
+            var existingIndexes = new HashSet<string>(StringComparer.Ordinal);
+            await using (var command = new NpgsqlCommand(
+                "SELECT indexname::text FROM pg_indexes WHERE schemaname = $1",
+                connection))
+            {
+                command.Parameters.Add(Params.Text(schema));
+                existingIndexes.UnionWith(
+                    await DriverCore.ReadListAsync(command, r => r.GetString(0), ct).ConfigureAwait(false));
+            }
+
             var ours = SqlNames.AllTables.Select(names.Name).ToHashSet(StringComparer.Ordinal);
             var created = new HashSet<string>(StringComparer.Ordinal);
             var selected = new List<MigrationOperation>();
@@ -67,7 +77,9 @@ internal static class SchemaBuilder
                         selected.Add(table);
                         created.Add(table.Name);
                         break;
-                    case CreateIndexOperation index when index.Schema == schema && created.Contains(index.Table):
+                    // Indexes of new tables, and indexes a newer version added to existing tables.
+                    case CreateIndexOperation index when index.Schema == schema && ours.Contains(index.Table)
+                        && (created.Contains(index.Table) || !existingIndexes.Contains(index.Name)):
                         selected.Add(index);
                         break;
                 }
