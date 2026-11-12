@@ -29,8 +29,13 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.Core/Llm/OpenAIClient.cs` | `graphiti_core/llm_client/openai_client.py` |
 | `src/GraphitiNet.Core/Llm/OpenAIGenericClient.cs` | `graphiti_core/llm_client/openai_generic_client.py` |
 | `src/GraphitiNet.Core/Llm/TokenUsageTracker.cs` | `graphiti_core/llm_client/token_tracker.py` |
+| `src/GraphitiNet.Core/Maintenance/BulkUtils.cs` | `graphiti_core/utils/bulk_utils.py` |
 | `src/GraphitiNet.Core/Maintenance/DanglingEndpoints.cs` | `graphiti_core/utils/maintenance/dangling_endpoints.py` |
 | `src/GraphitiNet.Core/Maintenance/DedupHelpers.cs` | `graphiti_core/utils/maintenance/dedup_helpers.py` |
+| `src/GraphitiNet.Core/Maintenance/EdgeAttributeMerge.cs` | `graphiti_core/utils/maintenance/attribute_utils.py` |
+| `src/GraphitiNet.Core/Maintenance/EdgeOperations.cs` | `graphiti_core/utils/maintenance/edge_operations.py` |
+| `src/GraphitiNet.Core/Maintenance/GraphDataOperations.cs` | `graphiti_core/utils/maintenance/graph_data_operations.py` |
+| `src/GraphitiNet.Core/Maintenance/TemporalEdgeUtils.cs` | `graphiti_core/utils/maintenance/temporal_edge_utils.py` |
 | `src/GraphitiNet.Core/Models/Edges.cs` | `graphiti_core/edges.py` |
 | `src/GraphitiNet.Core/Models/Nodes.cs` | `graphiti_core/nodes.py` |
 | `src/GraphitiNet.Core/Prompts/ChatPrompt.cs` | `graphiti_core/prompts/models.py` |
@@ -70,6 +75,10 @@ Baseline: Graphiti v0.31.2.
 | `tests/GraphitiNet.Core.Tests/Llm/OpenAIClientTests.cs` | `tests/llm_client/test_openai_client.py` |
 | `tests/GraphitiNet.Core.Tests/Llm/OpenAIGenericClientTests.cs` | `tests/llm_client/test_openai_generic_client.py` |
 | `tests/GraphitiNet.Core.Tests/Llm/TokenUsageTrackerTests.cs` | `tests/llm_client/test_token_tracker.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/BulkUtilsEdgeTests.cs` | `tests/utils/maintenance/test_bulk_utils.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/EdgeDedupScenarioTests.cs` | `tests/utils/maintenance/test_edge_dedup_scenarios.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/EdgeOperationsTests.cs` | `tests/utils/maintenance/test_edge_operations.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/TemporalEdgeUtilsTests.cs` | `tests/utils/maintenance/test_temporal_edge_utils.py` |
 | `tests/GraphitiNet.Core.Tests/Models/NodeLabelSecurityTests.cs` | `tests/test_node_label_security.py` |
 | `tests/GraphitiNet.Core.Tests/Prompts/PromptLibraryTests.cs` | `tests/prompts/test_configurable_prompt_library.py`, `test_prompt_names.py`, `test_prompt_exports.py`, `test_legacy_prompt_compatibility.py`, `test_complete_prompt.py` |
 | `tests/GraphitiNet.Core.Tests/Search/EdgeCrossEncoderRrfShortlistTests.cs` | `tests/utils/search/test_edge_cross_encoder_rrf_shortlist.py` |
