@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: draft, November 2026.
+Status: November 2026, after the first preview (`0.1.0-preview.1`).
 
 How we get from requirements to a working port. The requirements themselves are in [requirements.md](requirements.md).
 
@@ -71,12 +71,21 @@ Done and merged:
 - LLM, embedder and reranker clients: OpenAI, OpenAI-compatible endpoints, Azure OpenAI, and adapters for any
   Microsoft.Extensions.AI provider.
 - The search engine: every method, reranker and recipe.
-- Parity recordings of upstream's answers for two datasets.
+- The PostgreSQL driver: EF Core, pgvector, full-text search per language, host-owned tables.
+- Node and edge operations, and `AddEpisodeAsync`, `AddTripletAsync` and `RemoveEpisodeAsync` wired end to end.
+- The `Graphiti` class with namespaces, communities and sagas.
+- The first consumer's additions: episode access filter, strict removal, group lock, call context, model-call gate.
+- Parity recordings of upstream's answers for two datasets, replayed through the whole pipeline on every commit.
+- A first graph-building evaluation on LongMemEval against Python Graphiti
+  ([results](../parity/results/2026-11-12-lme-graph-building.md)).
+- NuGet packaging (`GraphitiNet`, `GraphitiNet.PostgreSql`), a quickstart sample, and the release workflow:
+  `0.1.0-preview.1`.
 
-In progress: the PostgreSQL driver, node and edge operations, the `Graphiti` class with communities and sagas, and
-the episode access filter.
+Next:
 
-Next: wire `AddEpisodeAsync` end to end, replay the parity recordings in CI, then package a first preview.
+- Wire `AddEpisodeBulkAsync` (bulk extraction and deduplication).
+- Close the PostgreSQL parity gap on `customer-support`.
+- A larger LongMemEval run, on PostgreSQL as well as in memory, then DMR and LoCoMo.
 
 ## Phases
 
@@ -84,9 +93,9 @@ Next: wire `AddEpisodeAsync` end to end, replay the parity recordings in CI, the
 
 - Fix the gaps above and record the scope decisions.
 - Solution skeleton:
-  - `GraphitiNet.Core`: records, interfaces, pipeline and search
-  - `GraphitiNet.EntityFrameworkCore.PostgreSql`: storage and the PostgreSQL search module
-  - `GraphitiNet.Providers`: Microsoft.Extensions.AI adapters
+  - `GraphitiNet.Core` (package `GraphitiNet`): records, interfaces, pipeline, search, providers (including the
+    Microsoft.Extensions.AI adapters) and the in-memory driver
+  - `GraphitiNet.PostgreSql`: storage and the PostgreSQL search module
   - test projects for unit and integration tests
   - `Directory.Build.props` and central package management
 - CI on GitHub Actions: build, unit tests, and integration tests against a PostgreSQL + pgvector service container.
@@ -156,7 +165,6 @@ Next: wire `AddEpisodeAsync` end to end, replay the parity recordings in CI, the
 - Not planned: a Neo4j or other graph-database driver. It is not a requirement today.
 - ASP.NET Core REST server.
 - MCP server on the official C# MCP SDK.
-- NuGet packaging and release process.
 
 ## First pull requests
 

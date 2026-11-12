@@ -10,6 +10,7 @@ Baseline: Graphiti v0.31.2.
 
 | graphiti-net file | Upstream file |
 | --- | --- |
+| `samples/Quickstart/Program.cs` | `examples/quickstart/quickstart_neo4j.py` |
 | `src/GraphitiNet.Core/CrossEncoder/ChatClientCrossEncoder.cs` | `graphiti_core/cross_encoder/gemini_reranker_client.py` |
 | `src/GraphitiNet.Core/CrossEncoder/CrossEncoderClient.cs` | `graphiti_core/cross_encoder/client.py` |
 | `src/GraphitiNet.Core/CrossEncoder/OpenAIRerankerClient.cs` | `graphiti_core/cross_encoder/openai_reranker_client.py` |
