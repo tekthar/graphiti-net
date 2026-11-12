@@ -29,12 +29,14 @@ Baseline: Graphiti v0.31.2.
 | `src/GraphitiNet.Core/Llm/OpenAIClient.cs` | `graphiti_core/llm_client/openai_client.py` |
 | `src/GraphitiNet.Core/Llm/OpenAIGenericClient.cs` | `graphiti_core/llm_client/openai_generic_client.py` |
 | `src/GraphitiNet.Core/Llm/TokenUsageTracker.cs` | `graphiti_core/llm_client/token_tracker.py` |
+| `src/GraphitiNet.Core/Maintenance/AttributeUtils.cs` | `graphiti_core/utils/maintenance/attribute_utils.py` |
 | `src/GraphitiNet.Core/Maintenance/BulkUtils.cs` | `graphiti_core/utils/bulk_utils.py` |
 | `src/GraphitiNet.Core/Maintenance/DanglingEndpoints.cs` | `graphiti_core/utils/maintenance/dangling_endpoints.py` |
 | `src/GraphitiNet.Core/Maintenance/DedupHelpers.cs` | `graphiti_core/utils/maintenance/dedup_helpers.py` |
-| `src/GraphitiNet.Core/Maintenance/EdgeAttributeMerge.cs` | `graphiti_core/utils/maintenance/attribute_utils.py` |
 | `src/GraphitiNet.Core/Maintenance/EdgeOperations.cs` | `graphiti_core/utils/maintenance/edge_operations.py` |
+| `src/GraphitiNet.Core/Maintenance/EntityTypesUtils.cs` | `graphiti_core/utils/ontology_utils/entity_types_utils.py`, `validate_excluded_entity_types in graphiti_core/helpers.py` |
 | `src/GraphitiNet.Core/Maintenance/GraphDataOperations.cs` | `graphiti_core/utils/maintenance/graph_data_operations.py` |
+| `src/GraphitiNet.Core/Maintenance/NodeOperations.cs` | `graphiti_core/utils/maintenance/node_operations.py`, `create_entity_node_embeddings in graphiti_core/nodes.py` |
 | `src/GraphitiNet.Core/Maintenance/TemporalEdgeUtils.cs` | `graphiti_core/utils/maintenance/temporal_edge_utils.py` |
 | `src/GraphitiNet.Core/Models/Edges.cs` | `graphiti_core/edges.py` |
 | `src/GraphitiNet.Core/Models/Nodes.cs` | `graphiti_core/nodes.py` |
@@ -75,9 +77,13 @@ Baseline: Graphiti v0.31.2.
 | `tests/GraphitiNet.Core.Tests/Llm/OpenAIClientTests.cs` | `tests/llm_client/test_openai_client.py` |
 | `tests/GraphitiNet.Core.Tests/Llm/OpenAIGenericClientTests.cs` | `tests/llm_client/test_openai_generic_client.py` |
 | `tests/GraphitiNet.Core.Tests/Llm/TokenUsageTrackerTests.cs` | `tests/llm_client/test_token_tracker.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/AttributeUtilsTests.cs` | `tests/utils/maintenance/test_attribute_utils.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/BulkUtilsEdgeTests.cs` | `tests/utils/maintenance/test_bulk_utils.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/DedupHelpersTests.cs` | `tests/utils/maintenance/test_node_operations.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/EdgeDedupScenarioTests.cs` | `tests/utils/maintenance/test_edge_dedup_scenarios.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/EdgeOperationsTests.cs` | `tests/utils/maintenance/test_edge_operations.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/EntityExtractionTests.cs` | `tests/utils/maintenance/test_entity_extraction.py` |
+| `tests/GraphitiNet.Core.Tests/Maintenance/NodeOperationsTests.cs` | `tests/utils/maintenance/test_node_operations.py` |
 | `tests/GraphitiNet.Core.Tests/Maintenance/TemporalEdgeUtilsTests.cs` | `tests/utils/maintenance/test_temporal_edge_utils.py` |
 | `tests/GraphitiNet.Core.Tests/Models/NodeLabelSecurityTests.cs` | `tests/test_node_label_security.py` |
 | `tests/GraphitiNet.Core.Tests/Prompts/PromptLibraryTests.cs` | `tests/prompts/test_configurable_prompt_library.py`, `test_prompt_names.py`, `test_prompt_exports.py`, `test_legacy_prompt_compatibility.py`, `test_complete_prompt.py` |
@@ -86,6 +92,7 @@ Baseline: Graphiti v0.31.2.
 | `tests/GraphitiNet.Core.Tests/Search/SearchSecurityTests.cs` | `tests/utils/search/test_search_security.py` |
 | `tests/GraphitiNet.Core.Tests/Search/SearchTracingTests.cs` | `tests/utils/search/test_search_tracing.py` |
 | `tests/GraphitiNet.Core.Tests/Search/SearchUtilsTests.cs` | `tests/utils/search/search_utils_test.py` |
+| `tests/GraphitiNet.Core.Tests/Utils/TextUtilsTests.cs` | `tests/test_text_utils.py`, `tests/utils/test_concatenate_episodes.py` |
 | `tests/GraphitiNet.Core.Tests/Prompts/Fixtures/prompt_renders.json`, `response_schemas.json` | Prompt text and schemas generated from `graphiti_core/prompts/*.py` |
 | `tests/GraphitiNet.Core.Tests/Prompts/Fixtures/prompt_contexts.json` | The `upstream_test` context from `tests/prompts/test_legacy_prompt_compatibility.py` |
 
