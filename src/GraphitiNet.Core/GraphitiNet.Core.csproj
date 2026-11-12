@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <RootNamespace>GraphitiNet</RootNamespace>
-    <Description>Temporal knowledge graphs for AI agents: core records, interfaces and utilities.</Description>
+    <PackageId>GraphitiNet</PackageId>
+    <Description>Temporal knowledge graphs for AI agents in .NET: an independent C# rewrite of Graphiti (Python, by Zep). Ingestion, hybrid search, OpenAI and Microsoft.Extensions.AI providers, and an in-memory graph driver. Not affiliated with Zep Software, Inc.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 

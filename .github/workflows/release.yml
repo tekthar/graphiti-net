@@ -1,0 +1,67 @@
+name: Release
+
+# Publishes the NuGet packages when a version tag is pushed, for example v0.1.0-preview.1.
+# Needs the repository secret NUGET_API_KEY: a nuget.org API key with push rights for the GraphitiNet and
+# GraphitiNet.PostgreSql packages. See CONTRIBUTING.md, "Releasing".
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: graphiti_pg_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GRAPHITI_TEST_POSTGRES: "Host=localhost;Username=postgres;Password=postgres;Database=graphiti_pg_tests"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Check the tag matches the version in Directory.Build.props
+        run: |
+          version=$(dotnet msbuild src/GraphitiNet.Core/GraphitiNet.Core.csproj -getProperty:Version)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $version in Directory.Build.props" >&2
+            exit 1
+          fi
+      - run: dotnet restore GraphitiNet.slnx
+      - run: dotnet build GraphitiNet.slnx --no-restore --configuration Release
+      - run: dotnet test GraphitiNet.slnx --no-build --configuration Release
+      - run: dotnet pack GraphitiNet.slnx --no-build --configuration Release --output artifacts/packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error
+      - name: Push to nuget.org
+        # Symbol packages (.snupkg) next to each .nupkg are pushed with it.
+        run: >-
+          dotnet nuget push "artifacts/packages/*.nupkg"
+          --api-key "$NUGET_API_KEY"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}

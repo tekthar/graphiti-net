@@ -38,3 +38,19 @@ jobs:
       - run: dotnet restore GraphitiNet.slnx
       - run: dotnet build GraphitiNet.slnx --no-restore --configuration Release
       - run: dotnet test GraphitiNet.slnx --no-build --configuration Release
+
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet pack GraphitiNet.slnx --configuration Release --output artifacts/packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/packages/*.snupkg
+          if-no-files-found: error

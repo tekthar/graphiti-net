@@ -6,9 +6,31 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
+  </PropertyGroup>
+
+  <!-- Packaging. The version of every package is set here, once. -->
+  <PropertyGroup>
+    <Version>0.1.0-preview.1</Version>
     <Authors>graphiti-net contributors</Authors>
     <Copyright>Copyright 2026 graphiti-net contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/tekthar/graphiti-net</PackageProjectUrl>
     <RepositoryUrl>https://github.com/tekthar/graphiti-net</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>knowledge-graph;temporal;graph;rag;memory;ai-agents;llm;embeddings;graphiti</PackageTags>
+    <PackageReleaseNotes>https://github.com/tekthar/graphiti-net/blob/main/CHANGELOG.md</PackageReleaseNotes>
+    <!-- Only the libraries under src/ are packable; tests, tools and samples opt in to nothing. -->
+    <IsPackable>false</IsPackable>
+    <!-- Reproducible builds with Source Link (built into the .NET SDK) and symbol packages. -->
+    <Deterministic>true</Deterministic>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>portable</DebugType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true' Or '$(CI)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>
