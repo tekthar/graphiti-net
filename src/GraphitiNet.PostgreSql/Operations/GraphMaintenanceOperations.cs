@@ -31,7 +31,9 @@ internal sealed class GraphMaintenanceOperations(DriverCore core) : IGraphMainte
                 await using var batch = new NpgsqlBatch(connection);
                 if (groupIds is null)
                 {
-                    DriverCore.AddCommand(batch, "TRUNCATE " + string.Join(", ", SqlNames.AllTables.Select(N.Table)));
+                    DriverCore.AddCommand(
+                        batch,
+                        "TRUNCATE " + string.Join(", ", SqlNames.AllTables.Append(SearchStatisticsSql.Table).Select(N.Table)));
                 }
                 else
                 {

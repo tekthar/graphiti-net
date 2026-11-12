@@ -1,7 +1,6 @@
 // Copyright 2026, graphiti-net contributors
 // Licensed under the Apache License, Version 2.0. See LICENSE.
 
-using System.Linq.Expressions;
 using GraphitiNet.Driver.PostgreSql.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -48,7 +47,7 @@ public static class GraphitiModelBuilderExtensions
             b.Property(e => e.ValidAt).HasColumnName("valid_at");
             b.Property(e => e.EntityEdges).HasColumnName("entity_edges");
             b.Property(e => e.EpisodeMetadata).HasColumnName("episode_metadata").HasColumnType("jsonb");
-            ConfigureSearch(b, t, e => e.SearchVector, "content", "source", "source_description");
+            ConfigureSearch(b, t);
             b.HasIndex(e => new { e.GroupId, e.ValidAt }).HasDatabaseName($"ix_{t}_group_id_valid_at");
             b.HasIndex(e => e.CreatedAt).HasDatabaseName($"ix_{t}_created_at");
         });
@@ -59,7 +58,7 @@ public static class GraphitiModelBuilderExtensions
             b.Property(e => e.Summary).HasColumnName("summary");
             b.Property(e => e.Attributes).HasColumnName("attributes").HasColumnType("jsonb");
             b.Property(e => e.NameEmbedding).HasColumnName("name_embedding").HasColumnType(vectorType);
-            ConfigureSearch(b, t, e => e.SearchVector, "name", "summary");
+            ConfigureSearch(b, t);
             // Exact-name lookups (GetByNamesAsync) are always scoped by group.
             b.HasIndex(e => new { e.GroupId, e.Name }).HasDatabaseName($"ix_{t}_group_id_name");
             b.HasIndex(e => e.CreatedAt).HasDatabaseName($"ix_{t}_created_at");
@@ -80,7 +79,7 @@ public static class GraphitiModelBuilderExtensions
             var t = ConfigureNode(b, schema, prefix + SqlNames.Communities);
             b.Property(e => e.Summary).HasColumnName("summary");
             b.Property(e => e.NameEmbedding).HasColumnName("name_embedding").HasColumnType(vectorType);
-            ConfigureSearch(b, t, e => e.SearchVector, "name");
+            ConfigureSearch(b, t);
             b.HasIndex(e => e.NameEmbedding)
                 .HasMethod("hnsw")
                 .HasOperators("vector_cosine_ops")
@@ -112,7 +111,7 @@ public static class GraphitiModelBuilderExtensions
             b.Property(e => e.InvalidAt).HasColumnName("invalid_at");
             b.Property(e => e.ReferenceTime).HasColumnName("reference_time");
             b.Property(e => e.Attributes).HasColumnName("attributes").HasColumnType("jsonb");
-            ConfigureSearch(b, t, e => e.SearchVector, "name", "fact");
+            ConfigureSearch(b, t);
             b.HasIndex(e => e.Name).HasDatabaseName($"ix_{t}_name");
             b.HasIndex(e => e.CreatedAt).HasDatabaseName($"ix_{t}_created_at");
             b.HasIndex(e => e.ValidAt).HasDatabaseName($"ix_{t}_valid_at");
@@ -132,32 +131,27 @@ public static class GraphitiModelBuilderExtensions
     }
 
     /// <summary>
-    /// A <c>regconfig</c> column holding the row's text search configuration, and a stored generated
-    /// <c>tsvector</c> built with it (so each group can use its own language), with a GIN index.
+    /// The full-text columns, as shadow properties (only the driver's SQL reads or writes them):
+    /// <c>text_search_config</c> (<c>regconfig</c>), the row's text search configuration;
+    /// <c>search_terms</c> (<c>jsonb</c>), each term of the searchable fields mapped to its frequency in each field;
+    /// <c>search_keys</c> (<c>text[]</c>), each field's distinct terms as <c>field:term</c>, with a GIN index that
+    /// finds (and counts) the rows containing a query term; and <c>search_lengths</c> (<c>integer[]</c>), the number
+    /// of terms in each field. The driver computes them when it writes a row, so BM25 can be scored in SQL.
+    /// <see langword="null"/> means not indexed yet (a row written outside the driver);
+    /// <c>BuildIndicesAndConstraintsAsync</c> fills them in.
     /// </summary>
-    private static void ConfigureSearch<T>(
-        EntityTypeBuilder<T> b,
-        string table,
-        Expression<Func<T, object?>> vector,
-        params string[] columns)
+    private static void ConfigureSearch<T>(EntityTypeBuilder<T> b, string table)
         where T : class
     {
-        // A shadow property: EF Core maps regconfig to an object id (uint); only the driver's SQL reads or writes it.
+        // EF Core maps regconfig to an object id (uint).
         b.Property<uint>("TextSearchConfig")
             .HasColumnName("text_search_config")
             .HasColumnType("regconfig")
             .HasDefaultValueSql($"'{PostgresGraphOptions.SimpleTextSearchConfig}'::regconfig");
-        // Lucene's StandardTokenizer keeps a relation name such as ADDED_TO_WORKSPACE as one term, where PostgreSQL's
-        // parser splits it at the underscores; dropping them keeps it one term, so "to" doesn't match every fact.
-        var text = string.Join(" || ' ' || ", columns.Select(c =>
-            c == "name" && table.EndsWith("entity_edges", StringComparison.Ordinal)
-                ? "coalesce(replace(name, '_', ''), '')"
-                : $"coalesce({c}, '')"));
-        b.Property(vector)
-            .HasColumnName("search_vector")
-            .HasColumnType("tsvector")
-            .HasComputedColumnSql($"to_tsvector(text_search_config, {text})", stored: true);
-        b.HasIndex(vector).HasMethod("gin").HasDatabaseName($"ix_{table}_search_vector");
+        b.Property<string?>("SearchTerms").HasColumnName("search_terms").HasColumnType("jsonb");
+        b.Property<List<string>?>("SearchKeys").HasColumnName("search_keys").HasColumnType("text[]");
+        b.Property<int[]?>("SearchLengths").HasColumnName("search_lengths").HasColumnType("integer[]");
+        b.HasIndex("SearchKeys").HasMethod("gin").HasDatabaseName($"ix_{table}_search_keys");
     }
 
     private static string ConfigureRecord<T>(EntityTypeBuilder<T> b, string schema, string table)

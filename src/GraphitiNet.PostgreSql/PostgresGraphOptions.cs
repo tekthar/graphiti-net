@@ -19,8 +19,8 @@ public sealed partial record PostgresGraphOptions
     public const string DefaultSchema = "graphiti";
 
     /// <summary>
-    /// The default text search configuration, <c>simple</c>: lower-casing with no stemming and no stop words, the
-    /// closest built-in match to the analyzer upstream's Neo4j full-text indexes use.
+    /// The default text search configuration, <c>simple</c>: terms are indexed exactly as upstream's Neo4j full-text
+    /// analyzer makes them (Lucene's standard tokenizer, lower-cased, no stemming, no stop words).
     /// </summary>
     public const string SimpleTextSearchConfig = "simple";
 
@@ -47,9 +47,9 @@ public sealed partial record PostgresGraphOptions
 
     /// <summary>
     /// The PostgreSQL text search configuration (<c>regconfig</c>) for groups with no entry in
-    /// <see cref="TextSearchConfigs"/> or <see cref="TextSearchConfigSelector"/>. Default <c>simple</c>, the closest
-    /// to upstream's Lucene analyzer (no stemming). Language configurations such as <c>english</c>, <c>german</c> or
-    /// <c>arabic</c> add stemming and stop words.
+    /// <see cref="TextSearchConfigs"/> or <see cref="TextSearchConfigSelector"/>. Default <c>simple</c>, upstream's
+    /// Lucene analysis exactly. Under a language configuration such as <c>english</c>, <c>german</c> or <c>arabic</c>,
+    /// each term is also stemmed, or dropped as a stop word, by PostgreSQL; BM25 ranks the resulting lexemes.
     /// </summary>
     public string DefaultTextSearchConfig { get; init; } = SimpleTextSearchConfig;
 

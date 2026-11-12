@@ -9,7 +9,7 @@ graphiti-net differs from upstream's Neo4j driver, and how to add and test a dri
 | Driver | Package | Notes |
 | --- | --- | --- |
 | In-memory (`InMemoryGraphDriver`) | `GraphitiNet.Core` | Zero-install: tests, demos, small apps. Thread-safe, one lock. BM25 full-text, exact cosine similarity. Can save to and load from a JSON file. |
-| PostgreSQL (`PostgresDriver`) | `GraphitiNet.PostgreSql` | The default for production: EF Core, pgvector, built-in full-text search. See [postgresql.md](postgresql.md). |
+| PostgreSQL (`PostgresDriver`) | `GraphitiNet.PostgreSql` | The default for production: EF Core, pgvector, BM25 keyword search in SQL. See [postgresql.md](postgresql.md). |
 | SQLite | planned | |
 
 ```csharp
@@ -134,10 +134,12 @@ for Kuzu, which stores each fact as two edges around a node). graphiti-net match
 | `clear_data(groups)` | nodes in the groups and their edges | also edges whose own group is listed | same in normal use, where edges share their endpoints' group |
 | Full-text query length | queries of 128+ words return nothing | the driver has no limit | core applies the guard |
 
-The in-memory driver ranks full-text with BM25 like Lucene (k1 = 1.2, b = 0.75, per-field statistics summed over
-fields). It splits on every character that is not a letter or digit, so `WORKS_AT` is two terms, where Lucene's
-standard tokenizer keeps it as one, and it has no stop words or stemming. Lucene also stores field lengths lossily, so
-scores can differ slightly; rankings rarely do.
+Both built-in drivers rank full-text with BM25 like Lucene (k1 = 1.2, b = 0.75, per-field statistics over the whole
+index, every group, summed over fields) and split text like Lucene's standard tokenizer (`FullText.Tokenize`:
+`WORKS_AT`, `can't` and `1,000` are one term each), with no stop words or stemming; they return the same records in
+the same order for the same data. Lucene stores field lengths lossily and scores in single precision, so upstream's
+scores can differ slightly; rankings rarely do. A new driver should use `FullText` too, and the conformance suite
+checks the ranking rules that hold whatever else is in the database.
 
 ## Adding a driver
 

@@ -1,7 +1,6 @@
 // Copyright 2026, graphiti-net contributors
 // Licensed under the Apache License, Version 2.0. See LICENSE.
 
-using NpgsqlTypes;
 using Pgvector;
 
 namespace GraphitiNet.Driver.PostgreSql.Entities;
@@ -9,7 +8,8 @@ namespace GraphitiNet.Driver.PostgreSql.Entities;
 // EF Core entity classes for graphiti-net's tables. They mirror the core records in GraphitiNet.Models; the driver maps
 // between the two. Hosts that add the tables to their own DbContext (AddGraphiti) see these types in their model.
 // Lists map to PostgreSQL text[] columns, JSON objects to jsonb (kept as raw JSON text here). The searchable tables
-// also have a text_search_config (regconfig) column, mapped as a shadow property: the driver sets it from the group.
+// also have text_search_config (regconfig), search_terms (jsonb) and search_lengths (integer[]) columns, mapped as
+// shadow properties: the driver sets them when it writes a row.
 
 /// <summary>Columns every graph record has.</summary>
 public abstract class GraphRecord
@@ -64,9 +64,6 @@ public sealed class EpisodeRecord : NodeRecord
 
     /// <summary>Caller metadata as a JSON object (<c>jsonb</c>), or <see langword="null"/>.</summary>
     public string? EpisodeMetadata { get; set; }
-
-    /// <summary>Generated full-text vector over content, source and source description.</summary>
-    public NpgsqlTsVector SearchVector { get; set; } = null!;
 }
 
 /// <summary>An entity row (<c>entities</c>).</summary>
@@ -80,9 +77,6 @@ public sealed class EntityNodeRecord : NodeRecord
 
     /// <summary>The name embedding (<c>vector(N)</c>).</summary>
     public Vector? NameEmbedding { get; set; }
-
-    /// <summary>Generated full-text vector over name and summary.</summary>
-    public NpgsqlTsVector SearchVector { get; set; } = null!;
 }
 
 /// <summary>A community row (<c>communities</c>).</summary>
@@ -93,9 +87,6 @@ public sealed class CommunityRecord : NodeRecord
 
     /// <summary>The name embedding (<c>vector(N)</c>).</summary>
     public Vector? NameEmbedding { get; set; }
-
-    /// <summary>Generated full-text vector over the name.</summary>
-    public NpgsqlTsVector SearchVector { get; set; } = null!;
 }
 
 /// <summary>A saga row (<c>sagas</c>).</summary>
@@ -149,9 +140,6 @@ public sealed class EntityEdgeRecord : EdgeRecord
 
     /// <summary>Custom attributes as a JSON object (<c>jsonb</c>).</summary>
     public string Attributes { get; set; } = "{}";
-
-    /// <summary>Generated full-text vector over name and fact.</summary>
-    public NpgsqlTsVector SearchVector { get; set; } = null!;
 }
 
 /// <summary>A community membership row (<c>community_edges</c>, upstream <c>HAS_MEMBER</c>).</summary>
