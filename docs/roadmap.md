@@ -90,8 +90,7 @@ Next: wire `AddEpisodeAsync` end to end, replay the parity recordings in CI, the
   - test projects for unit and integration tests
   - `Directory.Build.props` and central package management
 - CI on GitHub Actions: build, unit tests, and integration tests against a PostgreSQL + pgvector service container.
-- A SessionStart hook that starts PostgreSQL and Neo4j in cloud sessions, as described in
-  [development.md](development.md).
+- A SessionStart hook that starts PostgreSQL in cloud sessions, as described in [development.md](development.md).
 
 ### Phase 1: Data model and storage
 
@@ -154,6 +153,7 @@ Next: wire `AddEpisodeAsync` end to end, replay the parity recordings in CI, the
 ### Phase 7: Optional extras
 
 - SQL Server 2025 / Azure SQL backend.
+- Not planned: a Neo4j or other graph-database driver. It is not a requirement today.
 - ASP.NET Core REST server.
 - MCP server on the official C# MCP SDK.
 - NuGet packaging and release process.

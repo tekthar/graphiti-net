@@ -145,8 +145,8 @@ This works because Graphiti's queries are shallow. Upstream caps graph search at
 
 Requirements:
 
-- **PostgreSQL first, SQL Server second.** Keep the graph-driver interface so other backends, such as Neo4j for teams
-  that already run it, can be added later.
+- **PostgreSQL first, SQL Server second.** Keep the graph-driver interface so other backends can be added later.
+  A Neo4j (or other graph database) driver is not a requirement and not in the backlog.
 - **Two ways to host the tables:** a `ModelBuilder` extension, so the host adds them to its own `DbContext` and
   migrations, or a standalone `DbContext` in its own schema.
 - **Migrations, not first-run setup:** EF Core migrations create the tables, vector indexes, full-text indexes and
@@ -187,8 +187,8 @@ Both upstream servers have no authentication, authorisation or prompt-injection 
 - **Async throughout:** the pipeline is concurrent; use async/await with a SemaphoreSlim for the LLM concurrency limit.
 - **Schema setup:** EF Core migrations create tables and indexes (vector, full-text, uniqueness). Upstream creates them
   on first run instead.
-- **Storage abstraction:** keep a graph-driver interface. EF Core on PostgreSQL is the default; SQL Server and graph
-  databases such as Neo4j can be added behind the same interface.
+- **Storage abstraction:** keep a graph-driver interface. EF Core on PostgreSQL is the default and SQL Server comes
+  next. Graph databases such as Neo4j are not planned; the interface leaves room for them if that changes.
 - **Security in the host service:** authentication, authorisation, tenant isolation by group id, and input controls
   against prompt injection.
 - **Parity tests:** run the same episodes through Python Graphiti and the port, then compare extracted entities, facts

@@ -8,7 +8,7 @@ What you need to build the port and run parity tests against Python Graphiti.
 | --- | --- |
 | .NET 10 SDK | Building and testing the port |
 | PostgreSQL 16 with pgvector | The port's default storage, through EF Core |
-| Neo4j 5.26 | Python Graphiti's database for parity runs (`docker run neo4j:5.26`) |
+| Neo4j 5.26 | Only to re-record upstream's answers for parity: Python Graphiti needs it. graphiti-net itself never uses Neo4j |
 | Python with `graphiti-core` | The reference for parity runs. Install the pinned baseline release, not the latest |
 | An LLM and an embedding provider | Ingestion and search, for both the port and Python Graphiti |
 
@@ -60,8 +60,9 @@ docker pull neo4j:5.26 || true
 ```
 
 **Services start per session:** the cache keeps files, not running processes. Add a SessionStart hook in the repo's
-`.claude/settings.json` that starts Neo4j (`docker run`) and PostgreSQL (`service postgresql start`), and exits early
-unless `CLAUDE_CODE_REMOTE` is `true`.
+`.claude/settings.json` that starts PostgreSQL (`service postgresql start`), and exits early unless
+`CLAUDE_CODE_REMOTE` is `true`. Neo4j is only needed to re-record upstream's answers for parity (see
+[parity/README.md](../parity/README.md)), so start it by hand then.
 
 **Where to keep keys:** everyone who uses the environment can read its environment variables, so keep the environment
 personal and store every key that allows it as a network secret:
