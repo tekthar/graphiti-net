@@ -21,8 +21,8 @@ Rough size of what we port, excluding the FalkorDB, Kuzu and Neptune drivers:
 
 Found while surveying the baseline. Fix these in [requirements.md](requirements.md) before writing code.
 
-1. ~~**Sagas are missing.**~~ Fixed: the requirements now list all eight record types. `Graphiti.summarize_saga`
-   is still to port.
+1. ~~**Sagas are missing.**~~ Fixed: the requirements now list all eight record types, and `Graphiti.summarize_saga`
+   is ported as `SummarizeSagaAsync`.
 2. ~~**The concurrency default is wrong.**~~ Fixed: upstream's `DEFAULT_SEMAPHORE_LIMIT` is 20.
 3. ~~**Newer features aren't covered.**~~ Decided with the first consumer
    ([#2](https://github.com/tekthar/graphiti-net/issues/2), item 3):
@@ -85,11 +85,16 @@ Done and merged:
 - The SQL Server 2025 / Azure SQL driver (`GraphitiNet.SqlServer`): EF Core, the native `vector` type, BM25 keyword
   search over a driver-maintained keyword index; both parity datasets match upstream on it.
 
+- PostgreSQL keyword search ranked with BM25 in SQL, as upstream's Lucene, closing the last parity gap: both datasets
+  now match upstream on every driver.
+- The first consumer's requirements ([#1](https://github.com/tekthar/graphiti-net/issues/1) and
+  [#2](https://github.com/tekthar/graphiti-net/issues/2)), released in `0.1.0`.
+
 Next:
 
-- Wire `AddEpisodeBulkAsync` (bulk extraction and deduplication).
-- Close the PostgreSQL parity gap on `customer-support`.
-- A larger LongMemEval run, on PostgreSQL as well as in memory, then DMR and LoCoMo.
+- Local embedding models ([#3](https://github.com/tekthar/graphiti-net/issues/3)): no vector cutting by default, query
+  and document prefixes, no API key for a local server, and a tested Ollama path.
+- A larger LongMemEval run, on PostgreSQL as well as in memory, then DMR and LoCoMo: the release gate for 1.0.
 
 ## Phases
 
@@ -169,9 +174,3 @@ Next:
 - Not planned: a Neo4j or other graph-database driver. It is not a requirement today.
 - ASP.NET Core REST server.
 - MCP server on the official C# MCP SDK.
-
-## First pull requests
-
-1. Docs: fix the gaps above and record the scope decisions.
-2. Solution skeleton, CI and the SessionStart hook.
-3. Core records and the EF Core model with the first migration, plus CRUD integration tests on PostgreSQL.
