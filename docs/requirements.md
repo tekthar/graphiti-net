@@ -28,7 +28,7 @@ upstream version.
 
 ## Core data model
 
-The port needs five record types. Everything derived points back to an episode.
+The port needs eight record types. Everything derived points back to an episode.
 
 | Record | What it holds | Key fields to port |
 | --- | --- | --- |
@@ -37,6 +37,9 @@ The port needs five record types. Everything derived points back to an episode.
 | Entity edge (fact) | A triplet: entity, relationship, entity | Fact text, fact embedding, validity window, links to source episodes |
 | Episodic edge | Links an episode to each entity it mentions | Episode id, entity id |
 | Community | A cluster of related entities with a summary | Member entities, summary text |
+| Community edge | Links a community to a member entity | Community id, entity id |
+| Saga | An ordered chain of episodes, such as one conversation, with a summary | Summary, first and last episode, summary watermarks |
+| Has-episode and next-episode edges | Put an episode in a saga, and chain the saga's episodes in order | Saga id, episode ids |
 
 **Group id** partitions the graph, for example one graph per user or tenant. Every read and write is scoped by it, so
 it is the natural hook for multi-tenancy in .NET: in EF Core, a global query filter on the group id column.
@@ -59,7 +62,7 @@ and the porting difficulty sit.
 Also required:
 
 - **Bulk ingest** of many episodes at once, for backfills.
-- **Concurrency limit** on LLM calls (upstream default 10), to avoid provider rate limits.
+- **Concurrency limit** on LLM calls (upstream default 20, `DEFAULT_SEMAPHORE_LIMIT`), to avoid provider rate limits.
 - **Optional community building:** cluster entities and summarise each cluster.
 - **Delete an episode** and clean up what only it produced.
 - **Overridable prompts** per instance, with fixed response schemas, and optional routing of individual prompts to
@@ -136,14 +139,14 @@ This works because Graphiti's queries are shallow. Upstream caps graph search at
 | --- | --- | --- |
 | Episodes, entities, facts, communities | Tables with foreign keys | Same |
 | Vector search | pgvector with HNSW indexes, through `Pgvector.EntityFrameworkCore` | Native `vector` type and `VectorDistance` in EF Core 10 |
-| Keyword search | Built-in full-text search (`tsvector`); a BM25 extension such as ParadeDB `pg_search` where the host allows it | Full-text index |
+| Keyword search | BM25 in SQL over terms the driver tokenises like Lucene (see [postgresql.md](postgresql.md)) | BM25 over a driver-maintained keyword index (see [sqlserver.md](sqlserver.md)) |
 | Graph search (up to 3 hops) | Recursive SQL query | Recursive SQL query |
 | Group id isolation | A group id column and an EF Core global query filter; optionally row-level security | Same |
 
 Requirements:
 
-- **PostgreSQL first, SQL Server second.** Keep the graph-driver interface so other backends, such as Neo4j for teams
-  that already run it, can be added later.
+- **PostgreSQL first, SQL Server second.** Keep the graph-driver interface so other backends can be added later.
+  A Neo4j (or other graph database) driver is not a requirement and not in the backlog.
 - **Two ways to host the tables:** a `ModelBuilder` extension, so the host adds them to its own `DbContext` and
   migrations, or a standalone `DbContext` in its own schema.
 - **Migrations, not first-run setup:** EF Core migrations create the tables, vector indexes, full-text indexes and
@@ -158,9 +161,9 @@ Known differences from upstream:
 
 - **No upstream SQL driver to copy.** Upstream ships only graph-database drivers (Neo4j, FalkorDB, Amazon Neptune,
   Kuzu), so every Cypher query is rewritten in SQL. These queries need the most testing.
-- **Keyword ranking differs.** Neo4j ranks full-text matches with BM25 (through Lucene); PostgreSQL's built-in ranking
-  does not. Search results will differ slightly from Python Graphiti. Keyword search is one input to the fused
-  ranking, so the effect should be small, and the LongMemEval gate catches a real drop.
+- **Keyword ranking.** Neo4j ranks full-text matches with BM25 (through Lucene). Every graphiti-net driver ranks with
+  the same BM25 and Lucene-style tokenisation, so results match upstream's up to near-ties; Lucene's own statistics
+  also count deleted documents until its segments merge, which no SQL driver reproduces.
 - **Very large graphs.** A graph database pulls ahead on very large, densely connected graphs searched many hops deep.
   Graphiti's capped queries mostly avoid this.
 
@@ -184,8 +187,8 @@ Both upstream servers have no authentication, authorisation or prompt-injection 
 - **Async throughout:** the pipeline is concurrent; use async/await with a SemaphoreSlim for the LLM concurrency limit.
 - **Schema setup:** EF Core migrations create tables and indexes (vector, full-text, uniqueness). Upstream creates them
   on first run instead.
-- **Storage abstraction:** keep a graph-driver interface. EF Core on PostgreSQL is the default; SQL Server and graph
-  databases such as Neo4j can be added behind the same interface.
+- **Storage abstraction:** keep a graph-driver interface. EF Core on PostgreSQL is the default and SQL Server comes
+  next. Graph databases such as Neo4j are not planned; the interface leaves room for them if that changes.
 - **Security in the host service:** authentication, authorisation, tenant isolation by group id, and input controls
   against prompt injection.
 - **Parity tests:** run the same episodes through Python Graphiti and the port, then compare extracted entities, facts
@@ -196,8 +199,8 @@ Both upstream servers have no authentication, authorisation or prompt-injection 
   and are listed in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md), as the Apache License requires.
 - **Naming:** package IDs, namespaces and docs must not suggest an official Zep product.
 
-Open question: which upstream release to pin as the baseline. The latest release when this repository was created is
-[v0.31.2](https://github.com/getzep/graphiti/releases/tag/v0.31.2) (October 2026).
+Baseline: the port follows [v0.31.2](https://github.com/getzep/graphiti/releases/tag/v0.31.2) (October 2026). The
+plan for getting there is in [roadmap.md](roadmap.md).
 
 ## Verification and benchmarks
 

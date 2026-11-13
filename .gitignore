@@ -12,3 +12,6 @@ artifacts/
 !.env.example
 __pycache__/
 .venv/
+
+# Claude Code agent worktrees
+.claude/worktrees/

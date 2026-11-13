@@ -1,0 +1,20 @@
+{
+  "name": "arabic",
+  "description": "Arabic text with one person written in both Arabic and Latin script, a job change and a move, to check extraction, deduplication across scripts, invalidation and keyword search on non-Latin text.",
+  "group_id": "parity_arabic",
+  "episodes": [
+    {"name": "ar-msg-1", "source": "message", "source_description": "محادثة دعم", "reference_time": "2026-02-01T08:00:00Z",
+     "content": "محمد العلي: مرحباً، أنا مدير المشاريع في شركة النخيل للبرمجيات في الرياض."},
+    {"name": "ar-msg-2", "source": "message", "source_description": "محادثة دعم", "reference_time": "2026-02-01T08:03:00Z",
+     "content": "الدعم (سارة): أهلاً محمد، تمت إضافة زميلتك فاطمة الزهراني إلى مساحة عمل شركة النخيل."},
+    {"name": "en-note-1", "source": "text", "source_description": "CRM note", "reference_time": "2026-05-10T09:00:00Z",
+     "content": "Mohammed Al-Ali, project manager at Al-Nakheel Software, relocated from Riyadh to Jeddah in May 2026."},
+    {"name": "ar-msg-3", "source": "message", "source_description": "محادثة دعم", "reference_time": "2026-09-15T11:30:00Z",
+     "content": "فاطمة الزهراني: محمد العلي ترك شركة النخيل الشهر الماضي، وأنا الآن مديرة المشاريع."}
+  ],
+  "queries": [
+    "من هو مدير المشاريع في شركة النخيل؟",
+    "أين يعيش محمد العلي؟",
+    "Who manages projects at Al-Nakheel Software?"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "customer-support",
+  "description": "A short support history with a plan change, a move and a contradiction, to exercise extraction, deduplication and invalidation.",
+  "group_id": "parity_customer_support",
+  "episodes": [
+    {"name": "msg-1", "source": "message", "source_description": "support chat", "reference_time": "2026-01-10T09:00:00Z",
+     "content": "Alice Chen: Hi, I'm on the Pro plan and I work at Acme Robotics in Berlin. Can you help me add a teammate?"},
+    {"name": "msg-2", "source": "message", "source_description": "support chat", "reference_time": "2026-01-10T09:02:00Z",
+     "content": "Support (Ravi): Sure Alice. I've added Bob Martinez to your Acme Robotics workspace."},
+    {"name": "msg-3", "source": "message", "source_description": "support chat", "reference_time": "2026-03-02T14:30:00Z",
+     "content": "Alice Chen: We just upgraded to the Enterprise plan today because the team grew to 40 people."},
+    {"name": "doc-1", "source": "text", "source_description": "CRM note", "reference_time": "2026-04-15T08:00:00Z",
+     "content": "Alice Chen moved from Berlin to Lisbon in April 2026 and now leads the robotics platform team at Acme Robotics. Bob Martinez reports to her."},
+    {"name": "json-1", "source": "json", "source_description": "billing system export", "reference_time": "2026-05-01T00:00:00Z",
+     "content": "{\"customer\": \"Acme Robotics\", \"plan\": \"Enterprise\", \"seats\": 40, \"billing_contact\": \"Alice Chen\", \"renewal_date\": \"2027-03-02\"}"},
+    {"name": "msg-4", "source": "message", "source_description": "support chat", "reference_time": "2026-06-20T10:15:00Z",
+     "content": "Bob Martinez: Hi, Alice left Acme Robotics last week, so I'm the new billing contact for our account."}
+  ],
+  "queries": [
+    "What plan is Acme Robotics on?",
+    "Where does Alice Chen live?",
+    "Who is the billing contact for Acme Robotics?",
+    "Who does Bob Martinez report to?"
+  ]
+}

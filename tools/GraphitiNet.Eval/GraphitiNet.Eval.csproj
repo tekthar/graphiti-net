@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>GraphitiNet.Eval</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GraphitiNet.Core\GraphitiNet.Core.csproj" />
+    <ProjectReference Include="..\..\src\GraphitiNet.PostgreSql\GraphitiNet.PostgreSql.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GraphitiNet.Core/GraphitiNet.Core.csproj" />
+    <Project Path="src/GraphitiNet.PostgreSql/GraphitiNet.PostgreSql.csproj" />
+    <Project Path="src/GraphitiNet.SqlServer/GraphitiNet.SqlServer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GraphitiNet.Acceptance.Tests/GraphitiNet.Acceptance.Tests.csproj" />
+    <Project Path="tests/GraphitiNet.Core.Tests/GraphitiNet.Core.Tests.csproj" />
+    <Project Path="tests/GraphitiNet.Driver.Tests/GraphitiNet.Driver.Tests.csproj" />
+    <Project Path="tests/GraphitiNet.Parity.Tests/GraphitiNet.Parity.Tests.csproj" />
+    <Project Path="tests/GraphitiNet.PostgreSql.Tests/GraphitiNet.PostgreSql.Tests.csproj" />
+    <Project Path="tests/GraphitiNet.SqlServer.Tests/GraphitiNet.SqlServer.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/GraphitiNet.Eval/GraphitiNet.Eval.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Quickstart/Quickstart.csproj" />
+  </Folder>
+</Solution>

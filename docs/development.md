@@ -8,7 +8,8 @@ What you need to build the port and run parity tests against Python Graphiti.
 | --- | --- |
 | .NET 10 SDK | Building and testing the port |
 | PostgreSQL 16 with pgvector | The port's default storage, through EF Core |
-| Neo4j 5.26 | Python Graphiti's database for parity runs (`docker run neo4j:5.26`) |
+| SQL Server 2025 (optional) | The SQL Server driver's tests; a container is enough, see [sqlserver.md](sqlserver.md) |
+| Neo4j 5.26 | Only to re-record upstream's answers for parity: Python Graphiti needs it. graphiti-net itself never uses Neo4j |
 | Python with `graphiti-core` | The reference for parity runs. Install the pinned baseline release, not the latest |
 | An LLM and an embedding provider | Ingestion and search, for both the port and Python Graphiti |
 
@@ -21,6 +22,7 @@ Both the port and Python Graphiti read the same settings, so a parity run compar
 | `OPENAI_API_KEY` | (your key) | LLM and embeddings for both Graphiti and the port |
 | `ANTHROPIC_API_KEY` | (your key) | Claude as the test LLM, if used |
 | `ConnectionStrings__Graph` | `Host=localhost;Database=graphiti;Username=postgres` | The port's database (EF Core) |
+| `GRAPHITI_TEST_POSTGRES` / `GRAPHITI_TEST_SQLSERVER` | see [postgresql.md](postgresql.md#testing), [sqlserver.md](sqlserver.md#testing) | The driver tests' databases; tests skip when unreachable |
 | `NEO4J_URI` | `bolt://localhost:7687` | Python Graphiti's database for parity runs |
 | `NEO4J_USER` / `NEO4J_PASSWORD` | `neo4j` / a dev-only password | Its login (local container only) |
 | `LLM_MODEL` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` | `gpt-5-mini` / `text-embedding-3-small` / `1536` | Pinned models, identical for Python and .NET |
@@ -60,8 +62,9 @@ docker pull neo4j:5.26 || true
 ```
 
 **Services start per session:** the cache keeps files, not running processes. Add a SessionStart hook in the repo's
-`.claude/settings.json` that starts Neo4j (`docker run`) and PostgreSQL (`service postgresql start`), and exits early
-unless `CLAUDE_CODE_REMOTE` is `true`.
+`.claude/settings.json` that starts PostgreSQL (`service postgresql start`), and exits early unless
+`CLAUDE_CODE_REMOTE` is `true`. Neo4j is only needed to re-record upstream's answers for parity (see
+[parity/README.md](../parity/README.md)), so start it by hand then.
 
 **Where to keep keys:** everyone who uses the environment can read its environment variables, so keep the environment
 personal and store every key that allows it as a network secret:

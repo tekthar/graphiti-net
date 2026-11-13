@@ -2,8 +2,11 @@
 
 Thanks for helping. Issues and pull requests are welcome.
 
-The project is in planning. Start with [docs/requirements.md](docs/requirements.md), and open an issue before large
-changes so we can agree on the approach.
+The project is in preview. Start with [docs/requirements.md](docs/requirements.md) and the
+[roadmap](docs/roadmap.md), and open an issue before large changes so we can agree on the approach.
+
+Build and test with `dotnet test GraphitiNet.slnx`. Warnings are errors. The PostgreSQL tests need PostgreSQL with
+pgvector (see [docs/postgresql.md](docs/postgresql.md#testing)) and skip when it is unreachable.
 
 ## Porting rules
 
@@ -32,6 +35,19 @@ changes so we can agree on the approach.
 
 Don't name packages, namespaces or features in a way that suggests an official Zep product. Graphiti is Zep's brand;
 this project is an independent rewrite.
+
+## Releasing
+
+1. Set `<Version>` in [Directory.Build.props](Directory.Build.props). It is the only place the version lives.
+2. Add the release to [CHANGELOG.md](CHANGELOG.md).
+3. Check the packages: `dotnet pack GraphitiNet.slnx -c Release -o artifacts/packages`. CI also packs every commit
+   and keeps the packages as the `packages` artifact.
+4. Merge, then tag the commit with `v` and the version, for example `git tag -s v0.1.0-preview.1`, and push the tag.
+
+The [release workflow](.github/workflows/release.yml) checks that the tag matches the version, builds, runs the tests
+against PostgreSQL, packs, and pushes the packages and their symbol packages to nuget.org. It needs one repository
+secret, `NUGET_API_KEY`: a nuget.org API key scoped to push the `GraphitiNet`, `GraphitiNet.PostgreSql` and
+`GraphitiNet.SqlServer` packages (Settings → Secrets and variables → Actions).
 
 ## Code of conduct
 

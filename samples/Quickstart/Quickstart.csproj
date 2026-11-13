@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Quickstart</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- In your own project: dotnet add package GraphitiNet (and GraphitiNet.PostgreSql for PostgreSQL). -->
+    <ProjectReference Include="..\..\src\GraphitiNet.Core\GraphitiNet.Core.csproj" />
+    <ProjectReference Include="..\..\src\GraphitiNet.PostgreSql\GraphitiNet.PostgreSql.csproj" />
+  </ItemGroup>
+
+</Project>
