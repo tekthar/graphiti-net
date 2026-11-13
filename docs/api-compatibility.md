@@ -384,7 +384,7 @@ Under the default group lock the second call waits and then replays the first ca
 both callers (`NoGroupLock`, or several servers with the in-process lock) both may process the one episode, so use a
 distributed `IGroupLock` there. Without a key, behaviour is upstream's. Existing PostgreSQL and SQL Server databases
 get the new column and index from `BuildIndicesAndConstraintsAsync`; EF Core migration users add a migration (see
-[postgresql.md](postgresql.md#upgrading-from-010) and [sqlserver.md](sqlserver.md#upgrading-from-010)).
+[postgresql.md](postgresql.md#upgrading-from-01) and [sqlserver.md](sqlserver.md#upgrading-from-010)).
 
 ### Retrying transient provider errors (`ModelCallRetryOptions`)
 

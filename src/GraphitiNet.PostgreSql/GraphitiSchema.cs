@@ -17,7 +17,8 @@ public static class GraphitiSchema
     /// <summary>
     /// The tables <c>BuildIndicesAndConstraintsAsync</c> creates and the driver maintains for a schema name and table
     /// prefix: the nine graph tables of the EF Core model (<see cref="GraphitiModelBuilderExtensions.AddGraphiti"/>)
-    /// with the record type each holds, and the <c>search_statistics</c> table BM25 ranking reads (created by
+    /// with the record type each holds, and the <c>search_statistics</c> and <c>search_term_counts</c> tables BM25
+    /// ranking reads (created by
     /// <see cref="GraphitiSchemaSql.SearchStatistics"/>, outside the EF Core model). For a data map, a backup or
     /// retention policy, or a test that lists the schema. Needs no connection.
     /// </summary>
@@ -33,7 +34,7 @@ public static class GraphitiSchema
         return
         [
             .. ModelTables(model, options.Schema)
-                .Append(new GraphitiTable(options.Schema, options.TablePrefix + SearchStatisticsSql.Table, null))
+                .Concat(SearchStatisticsSql.Tables.Select(t => new GraphitiTable(options.Schema, options.TablePrefix + t, null)))
                 .OrderBy(t => t.Name, StringComparer.Ordinal),
         ];
     }

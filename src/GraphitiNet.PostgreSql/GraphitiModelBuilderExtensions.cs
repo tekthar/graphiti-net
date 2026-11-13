@@ -140,8 +140,8 @@ public static class GraphitiModelBuilderExtensions
     /// The full-text columns, as shadow properties (only the driver's SQL reads or writes them):
     /// <c>text_search_config</c> (<c>regconfig</c>), the row's text search configuration;
     /// <c>search_terms</c> (<c>jsonb</c>), each term of the searchable fields mapped to its frequency in each field;
-    /// <c>search_keys</c> (<c>text[]</c>), each field's distinct terms as <c>field:term</c>, with a GIN index that
-    /// finds (and counts) the rows containing a query term; and <c>search_lengths</c> (<c>integer[]</c>), the number
+    /// <c>search_keys</c> (<c>text[]</c>), each field's distinct terms with their impact class as
+    /// <c>field:term|class</c>, with a GIN index that finds the rows where a query term weighs at least so much; and <c>search_lengths</c> (<c>integer[]</c>), the number
     /// of terms in each field. The driver computes them when it writes a row, so BM25 can be scored in SQL.
     /// <see langword="null"/> means not indexed yet (a row written outside the driver);
     /// <c>BuildIndicesAndConstraintsAsync</c> fills them in.

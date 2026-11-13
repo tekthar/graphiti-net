@@ -33,7 +33,7 @@ public sealed class PostgresDriverTests : IAsyncLifetime
             "SELECT table_name::text FROM information_schema.tables WHERE table_schema = $1 ORDER BY 1", _schema);
         Assert.Equal(
             ["communities", "community_edges", "entities", "entity_edges", "episodes", "episodic_edges",
-                "has_episode_edges", "next_episode_edges", "sagas", "search_statistics"],
+                "has_episode_edges", "next_episode_edges", "sagas", "search_statistics", "search_term_counts"],
             tables);
 
         var indexes = await QueryAsync<string>("SELECT indexdef FROM pg_indexes WHERE schemaname = $1", _schema);

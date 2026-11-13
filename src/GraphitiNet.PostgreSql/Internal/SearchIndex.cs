@@ -10,7 +10,8 @@ namespace GraphitiNet.Driver.PostgreSql.Internal;
 
 /// <summary>
 /// A row's full-text columns: <c>search_terms</c> (JSON, each term to its packed frequencies), <c>search_keys</c>
-/// (each field's distinct terms as <see cref="SearchIndex.Key"/>s) and <c>search_lengths</c> (each field's term count).
+/// (each field's distinct terms with their impact class, as <see cref="SearchIndex.Key"/>s) and <c>search_lengths</c>
+/// (each field's term count).
 /// </summary>
 internal readonly record struct SearchDocument(string Terms, string[] Keys, int[] Lengths);
 
@@ -38,11 +39,88 @@ internal static class SearchIndex
     public const int MaxFrequency = (1 << FrequencyBits) - 1;
 
     /// <summary>
-    /// A field-qualified term, <c>field:term</c> (field from 0), as <c>search_keys</c> holds them: its GIN index finds
-    /// the rows with a term in a field, and counts them, without reading the rows' values.
+    /// A field-qualified term with its impact class, <c>field:term|class</c> (field from 0), as <c>search_keys</c> holds
+    /// them: its GIN index finds the rows with a term in a field, or only those where the term weighs at least so
+    /// much, without reading the rows' values; <c>search_term_counts</c> counts the rows holding each key.
     /// </summary>
-    public static string Key(int field, string term) =>
-        field.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + term;
+    public static string Key(int field, string term, int impactClass) =>
+        impactClass == UnclassedImpact
+            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{field}:{term}")
+            : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{field}:{term}|{impactClass}");
+
+    /// <summary>
+    /// Every key a term can have in a field: one per impact class, then the key of <see cref="UnclassedImpact"/>,
+    /// <c>field:term</c>, which graphiti-net 0.1 wrote and rows keep until <c>BuildIndicesAndConstraintsAsync</c>
+    /// converts them (searches treat it as the highest class).
+    /// </summary>
+    public static IEnumerable<string> Keys(int field, string term) =>
+        Enumerable.Range(0, ImpactClasses).Select(c => Key(field, term, c)).Append(Key(field, term, UnclassedImpact));
+
+    /// <summary>The impact class of a key without one, from graphiti-net 0.1.</summary>
+    public const int UnclassedImpact = -1;
+
+    /// <summary>
+    /// The lower bounds of the classes of <c>length / tf</c>, times four so that they are integers: four classes per
+    /// doubling, from 1 to 256 and above. A row's class is the number of bounds at or below its ratio, computed with
+    /// integers so that .NET and SQL agree exactly.
+    /// </summary>
+    public static readonly int[] RatioBoundsTimesFour =
+    [
+        4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384,
+        448, 512, 640, 768, 896, 1024,
+    ];
+
+    /// <summary>Term frequencies are classed 1, 2, 3, and 4 or more.</summary>
+    public const int FrequencyClasses = 4;
+
+    /// <summary>The number of impact classes a (term, field) pair can be in.</summary>
+    public static int ImpactClasses => FrequencyClasses * RatioBoundsTimesFour.Length;
+
+    /// <summary>
+    /// The impact class of a term occurring <paramref name="tf"/> times in a field of <paramref name="length"/> terms:
+    /// <c>(min(tf, 4) - 1) * 33 + r - 1</c>, where <c>r</c> counts the <see cref="RatioBoundsTimesFour"/> at or below
+    /// <c>length / tf</c>. A class bounds the term's BM25 weight in the field whatever the collection statistics; see
+    /// <see cref="MaxWeight"/>.
+    /// </summary>
+    public static int ImpactClass(long tf, long length)
+    {
+        var ratio = 0;
+        foreach (var bound in RatioBoundsTimesFour)
+        {
+            if (4 * length >= bound * tf)
+            {
+                ratio++;
+            }
+        }
+
+        return ((int)(Math.Min(tf, FrequencyClasses) - 1) * RatioBoundsTimesFour.Length) + Math.Max(ratio, 1) - 1;
+    }
+
+    /// <summary>The SQL of <see cref="ImpactClass"/> for the integer expressions <paramref name="tf"/> and <paramref name="length"/>.</summary>
+    public static string ImpactClassSql(string tf, string length) =>
+        $"(((least({tf}, {FrequencyClasses}) - 1) * {RatioBoundsTimesFour.Length}) + greatest((SELECT count(*) FROM "
+        + $"unnest('{{{string.Join(",", RatioBoundsTimesFour)}}}'::bigint[]) AS m(b) "
+        + $"WHERE 4 * ({length})::bigint >= m.b * ({tf})), 1) - 1)";
+
+    /// <summary>
+    /// An upper bound of <c>tf * (k1 + 1) / (tf + k1 * (1 - b + b * length / averageLength))</c>, a term's BM25 weight
+    /// in a field before its idf, for every row whose (term, field) is in <paramref name="impactClass"/>. The weight is
+    /// <c>(k1 + 1) / (1 + k1 * (1 - b) / tf + k1 * b * (length / tf) / averageLength)</c>; the class fixes <c>tf</c>
+    /// (from 4 on, only bounds it below) and bounds <c>length / tf</c> below.
+    /// </summary>
+    public static double MaxWeight(int impactClass, double averageLength)
+    {
+        if (impactClass == UnclassedImpact)
+        {
+            // Any tf and length; length / tf is at least 1.
+            return (FullText.K1 + 1) / (1 + (FullText.K1 * FullText.B / averageLength));
+        }
+
+        var tfClass = (impactClass / RatioBoundsTimesFour.Length) + 1;
+        var ratio = RatioBoundsTimesFour[impactClass % RatioBoundsTimesFour.Length] / 4.0;
+        var saturation = tfClass < FrequencyClasses ? FullText.K1 * (1 - FullText.B) / tfClass : 0;
+        return (FullText.K1 + 1) / (1 + saturation + (FullText.K1 * FullText.B * ratio / averageLength));
+    }
 
     /// <summary>SQL reading field <paramref name="field"/> (from 0) of a packed frequency (<c>jsonb</c>).</summary>
     public static string FrequencySql(string packed, int field) =>
@@ -146,7 +224,8 @@ internal static class SearchIndex
 
         return new SearchDocument(
             System.Text.Encoding.UTF8.GetString(buffer.WrittenSpan),
-            [.. frequencies.SelectMany(t => fields.Select((_, f) => f).Where(f => t.Value[f] > 0).Select(f => Key(f, t.Key)))],
+            [.. frequencies.SelectMany(t => fields.Select((_, f) => f).Where(f => t.Value[f] > 0)
+                .Select(f => Key(f, t.Key, ImpactClass(Math.Min(t.Value[f], MaxFrequency), fields[f].Count))))],
             [.. fields.Select(f => f.Count)]);
     }
 

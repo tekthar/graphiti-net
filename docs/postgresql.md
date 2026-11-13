@@ -22,10 +22,11 @@ await driver.GraphOps.BuildIndicesAndConstraintsAsync(); // once: creates the ex
 
 `BuildIndicesAndConstraintsAsync` is idempotent: it creates the `vector` extension, the schema, any missing tables
 with their indexes, and any index or column a newer version added to an existing table, and leaves existing data
-alone (rows missing their full-text columns, from an earlier version or written outside the driver, are indexed). It
-builds the DDL from the same EF Core model a migration would use, so the two never disagree, then installs the
-full-text statistics triggers and recounts the statistics (see [Keyword search](#keyword-search-and-ranking)), which
-reads each searchable table once. It runs in one transaction under an advisory lock, so several app instances may call
+alone (rows missing their full-text columns, from an earlier version or written outside the driver, are indexed, and
+rows from 0.1 get their keyword index converted once: see [Upgrading from 0.1](#upgrading-from-01)). It builds the DDL
+from the same EF Core model a migration would use, so the two never disagree, then installs the full-text statistics
+triggers and recounts the per-field statistics (see [Keyword search](#keyword-search-and-ranking)), which reads each
+searchable table once (about 2 seconds for a million rows). It runs in one transaction under an advisory lock, so several app instances may call
 it at start-up. `BuildIndicesAndConstraintsAsync(deleteExisting: true)` drops the tables first: **all graph data is
 lost**.
 
@@ -147,18 +148,21 @@ the tables are created:
 migrationBuilder.Sql(GraphitiSchemaSql.SearchStatistics(graphOptions)); // same options as the driver
 ```
 
-It creates the `search_statistics` table and its triggers and counts the rows already there; it is idempotent, so
-it can also run again later (after a migration that recreates the graph tables, say). Without it, keyword search
-throws an `InvalidOperationException` saying so, rather than ranking on wrong statistics. Calling
+It creates the `search_statistics` and `search_term_counts` tables and their triggers and counts the rows already
+there (and, once, converts the keyword index of rows written by 0.1: see [Upgrading from 0.1](#upgrading-from-01)); it
+is idempotent, so it can also run again later (after a migration that recreates the graph tables, say). Without it,
+keyword search throws an `InvalidOperationException` saying so, rather than ranking on wrong statistics. Calling
 `BuildIndicesAndConstraintsAsync` instead also works.
 
 `BuildIndicesAndConstraintsAsync` and migrations produce the same tables. If you start with the former and move to
 migrations later, mark the initial migration as applied (insert its id into `__EFMigrationsHistory`) instead of
 running it.
 
-### Upgrading from 0.1.0
+## Upgrading from 0.1
 
-The next release adds idempotency keys on episodes
+### Idempotency keys
+
+0.2 adds idempotency keys on episodes
 ([#9](https://github.com/tekthar/graphiti-net/issues/9)): a nullable `idempotency_key text COLLATE "C"` column on
 `episodes` and a unique index `ux_episodes_group_id_idempotency_key` on (`group_id`, `idempotency_key`). Rows without
 a key never collide (PostgreSQL treats NULLs as distinct), so existing rows need no change.
@@ -178,6 +182,25 @@ a key never collide (PostgreSQL treats NULLs as distinct), so existing rows need
 
   Until the migration is applied, every episode write fails with "column idempotency_key does not exist".
 
+### Keyword index
+
+0.2 changes the keyword index (`search_keys` holds `field:term|class` instead of `field:term`) and adds the
+`search_term_counts` table. `BuildIndicesAndConstraintsAsync`, or `GraphitiSchemaSql.SearchStatistics` in a migration,
+does the upgrade once, in its transaction:
+
+- it rewrites `search_keys` for every row written by 0.1, computing the impact classes in SQL from the stored
+  frequencies and lengths (no text is analysed again), with the GIN index dropped first and rebuilt after;
+- it counts every table's keys into `search_term_counts` (and marks the table counted, so later calls skip this).
+
+On the benchmark's million records (no embeddings; 4 vCPU, default PostgreSQL settings) the upgrade took **12
+minutes**; counting alone, on already converted rows, takes about 40 seconds. Every searchable row gets a new version,
+so the tables take about twice their space until `VACUUM` lets new rows reuse it (or `VACUUM FULL` returns it), and
+**HNSW indexes receive one insertion per row**: with embeddings, expect the upgrade to take about as long as saving every
+row again, and plan it as maintenance (for example, run the migration script outside application start-up). Searches
+stay exact before the conversion and during a rolling upgrade: a key without a class is treated as the highest class,
+so such rows are always read (only the speed-up is missing). Rows written by 0.2 cannot be read correctly by 0.1, so
+don't roll back to 0.1 against an upgraded database.
+
 ## Schema
 
 All tables live in `Schema`, named `TablePrefix` + the name below. Ids are `text` primary keys with the `C`
@@ -195,6 +218,7 @@ collation, so paging by id is ordinal. Every table has a `group_id` column and i
 | `has_episode_edges` | Saga has episode | |
 | `next_episode_edges` | Episode chain | |
 | `search_statistics` | Keyword-ranking statistics | Not part of the EF Core model; kept by triggers (see below) |
+| `search_term_counts` | Rows per keyword key, group and configuration | Not part of the EF Core model; kept by the same triggers |
 
 Every edge table has `source_node_uuid`, `target_node_uuid`, an index on (source, target) and one on target. Edges
 reference nodes by id without foreign keys, as in a graph database: deleting a node deletes every edge touching it
@@ -206,14 +230,15 @@ driver computes when it writes a row:
 - `text_search_config regconfig`, the row's text search configuration, from its group;
 - `search_terms jsonb`, each term of the searchable fields mapped to its frequency in each field (packed into one
   number, 20 bits per field);
-- `search_keys text[]`, each field's distinct terms as `field:term` (for example `1:alice`), with a GIN index;
+- `search_keys text[]`, each field's distinct terms with their impact class as `field:term|class` (for example
+  `1:alice|7`; see [Keyword search](#keyword-search-and-ranking)), with a GIN index;
 - `search_lengths integer[]`, the number of terms in each field.
 
-Three statement-level triggers on each of them keep `search_statistics` current.
+Three statement-level triggers on each of them keep `search_statistics` and `search_term_counts` current.
 
 `GraphitiSchema.Tables(options)` lists these tables for a schema name and table prefix, without a database: each
 `GraphitiTable` has the `Schema`, the `Name` (with the prefix), the `QualifiedName` and the `RecordType` it holds
-(`null` for `search_statistics`). Use it for a data map, a backup or retention policy, or a test that lists the
+(`null` for `search_statistics` and `search_term_counts`). Use it for a data map, a backup or retention policy, or a test that lists the
 schema. It reads the same EF Core model `BuildIndicesAndConstraintsAsync` creates the tables from, and a test checks
 the two against each other.
 
@@ -259,18 +284,41 @@ the two on a mixed corpus.
   the same way.
 - **Statistics** cover the whole table, every group, as one Lucene index covers every group, and are per field:
   `N`, the rows whose field has any term; the fields' total length; and, per query term, its document frequency.
-  Document frequencies are counted from the GIN index on `search_keys` for just the query's terms (no row is read).
-  Row counts and lengths come from `search_statistics`, which the triggers update in the writing transaction:
-  writers only insert small delta rows (so concurrent writers never wait on one another), and now and then a trigger
-  folds a table's deltas into one row under a try-lock. A search reads its statistics and its rows in one
+  Row counts and lengths come from `search_statistics`; document frequencies from `search_term_counts`, which counts
+  the rows holding each `search_keys` key (and the rows of each group and text search configuration). Statement-level
+  triggers update both in the writing transaction, without ever making concurrent writers wait on one another: for
+  `search_statistics` writers insert small delta rows, which a trigger folds now and then under a try-lock; for
+  `search_term_counts` each transaction adds its changes to the keys' rows in one of eight *lanes* that it holds
+  alone (an advisory lock), so no two writers update the same row. A search reads its statistics and its rows in one
   repeatable-read snapshot, so the statistics always match exactly the rows it scores, whatever is written
-  concurrently.
-- **Speed.** Candidates come from the GIN index; each candidate's frequencies are decoded once and its score is one
-  SQL expression. A query mixing rare and common terms first scores only the rows with its rare terms; a term adds at
-  most `idf * (k1 + 1)` per field however often it repeats, so when those rows already fill the limit with scores
-  above what the common terms alone could reach, they are the answer, exactly as a full pass would rank them
-  (Lucene's MaxScore), and the many rows holding only common terms are never read. A search takes two or three
-  round trips.
+  concurrently. Reading them is one round trip that touches a few rows per query term, whatever the table's size.
+- **Speed.** Each key in `search_keys` carries the term's *impact class* in that field: its frequency (1, 2, 3, 4 or
+  more) and the field's length divided by it (four classes per doubling). A class bounds what the term can add to a
+  row's score whatever the statistics, so the GIN index can find the rows where a term weighs at least so much, and a
+  row's score is at most the sum of its keys' bounds. A search then reads few rows, in up to three passes, and still
+  returns exactly what scoring every matching row would (each bound is computed with a margin far above
+  floating-point rounding, so a row left out scores strictly below the last result, and ties break as in a full
+  pass):
+  1. **First pass** (Lucene's MaxScore, by impact class instead of by term): the keys with the highest bounds, while
+     about 1,500 of their rows are in the searched groups, are scored. The last of the best `limit` scores is a
+     threshold. A row holding none of those keys can score at most the sum, over the query's (term, field) pairs, of
+     the best bound left; when the threshold is above that, these are the answer (typical when a query mixes rare and
+     common words).
+  2. **Second pass** (in the spirit of block-max WAND): otherwise, only rows whose keys' bounds add up to the
+     threshold can still beat it. Each pair's remaining classes are grouped into a few tiers, and every combination of
+     tiers whose bounds reach the threshold becomes one conjunction of key sets, which the GIN index answers without
+     reading a row. A query made only of common words matches most rows, but its best results hold several of the
+     words with high weights, which few rows do: at a million records, this pass typically reads tens to a few
+     thousand rows instead of hundreds of thousands.
+  3. **Full pass**, only when the groups searched are small (their rows are read through the `group_id` index and
+     tested with the term map) or when pruning cannot help.
+
+  Rows written by graphiti-net 0.1 have keys without a class (`field:term`) until `BuildIndicesAndConstraintsAsync`
+  converts them; searches treat such a key as the highest class, so results stay exact while both kinds coexist
+  (during a rolling upgrade, say), only slower. A search takes three to six round trips, in one transaction, for
+  which it sets (`SET LOCAL`, nothing outlives it) `enable_seqscan = off` (the planner cannot estimate how few rows
+  the key conditions select), `work_mem = '64MB'` (so GIN bitmaps stay exact), and no parallel workers or JIT
+  compilation (both take milliseconds to start, more than these statements run).
 
 Differences from Neo4j that remain: Lucene stores field lengths in one byte (lossy) and computes in single precision,
 and its statistics count deleted documents until segments merge, so upstream's own scores drift slightly between
@@ -351,26 +399,37 @@ services.AddSingleton<IGroupLock>(_ => new PostgresGroupLock(connectionString, o
 ## Performance notes
 
 - Reads never track entities and never select embeddings or search columns. Vector and graph searches are one round
-  trip each; keyword searches two or three (statistics, then scoring, inside one read-only snapshot).
-- Keyword search time follows the number of rows that contain a query term. On a synthetic graph of 20,000
-  entities, 50,000 facts and 5,000 episodes in one group (Zipf-distributed words, so a few words occur in most rows;
-  PostgreSQL 16 in a small container; 40 queries of 3 to 8 words each, median and 90th percentile):
+  trip each; keyword searches three to six, inside one read-only snapshot.
+- **Keyword search at a million records.** `tools/GraphitiNet.Bench` generates a mostly Arabic graph of 1M records
+  (300,000 entities, 550,000 facts, 140,000 episodes, 10,000 communities; Zipf-distributed words, so `في` or `من`
+  are in most rows) over three large tenants and 400 small groups, a third of them under the `arabic` configuration,
+  and measures every search type with rare, mid-frequency, common-only, mixed and name queries, per group scope,
+  with and without filters (4 vCPU, PostgreSQL 16 with its default settings; warm medians, limit 10):
 
-  | Queries | BM25 (this version) | `ts_rank` (before) |
-  | --- | --- | --- |
-  | Rare words, facts | 4 ms / 5 ms | 38 ms / 46 ms |
-  | Mid-frequency words, facts | 16–18 ms / 27 ms | 45–49 ms / 54–64 ms |
-  | Mid-frequency words, entities | 17–18 ms / 22–32 ms | 28–29 ms / 36–37 ms |
-  | Random words (several in most rows), facts | 37–41 ms / 72–80 ms | 109–120 ms / 149–155 ms |
-  | Random words, episodes | 13 ms / 53–55 ms | 69–75 ms / 92–95 ms |
-  | Random words, entities | 99–104 ms / 156–176 ms | 59–64 ms / 79–82 ms |
+  | Queries | Scope | 0.1 | 0.2 |
+  | --- | --- | --- | --- |
+  | Common words only, entities | one large tenant (22% of the rows) | 1,081 ms | 33 ms |
+  | Common words only, facts | one large tenant | 738 ms | 22 ms |
+  | Common words only, episodes | one large tenant | 884 ms | 37 ms |
+  | Common words only, entities | person + unit + project + site | 662 ms | 14 ms |
+  | Common words only, entities | one small group | 749 ms | 6 ms |
+  | Common words only, entities / facts / episodes | all groups | 2,266 / 1,761 / 3,019 ms | 61 / 44 / 49 ms |
+  | Mixed (common, mid and rare words), facts | one large tenant | 621 ms | 23 ms |
+  | Names, entities | all groups | 639 ms | 10 ms |
+  | Rare words, entities / facts / episodes | one large tenant | 9 / 34 / 6 ms | 10 / 12 / 7 ms |
 
-  Rare-terms-first pruning settles most mixed queries early. It cannot help when common words carry real weight, as
-  in the two-word entity names here: then every matching row is scored, and on entities whose summaries share
-  the query's commonest words (90% of the table matches) a query costs about 5 µs per matching row. Saving the
-  same graph took 13% longer (the terms are computed in .NET; the triggers add one small insert per statement).
+  On one large tenant's group every case has a median between 7 and 68 ms; across all groups at most 96 ms, and no
+  case's 99th percentile exceeds 230 ms (0.1's slowest case took 3.1 s at the median). Every result is identical to
+  0.1's. Setup, every case, write costs and the commands to reproduce are in
+  [docs/benchmarks/postgresql-keyword-search.md](benchmarks/postgresql-keyword-search.md).
+- Keyword search time follows the rows it reads: a query's best rows hold its words with high weights, and only rows
+  that can still reach the results are read (see [Keyword search](#keyword-search-and-ranking)). Searches over a few
+  small groups read those groups' rows directly. Give PostgreSQL enough `shared_buffers` (or OS cache) to hold the
+  searchable tables' hot pages and the `search_keys` GIN indexes.
 - Saves are batched upserts (`INSERT ... ON CONFLICT (uuid) DO UPDATE`), `BulkBatchSize` rows (default 500) per
-  round trip. `AddNodesAndEdgesBulkAsync` writes everything in one transaction.
+  statement, so the statistics triggers run once per batch. Keeping the per-key counts costs writes: at a million
+  records, bulk saves ran at 45-60% of 0.1's rate and a single save took about 2 ms more (see the benchmark).
+  `AddNodesAndEdgesBulkAsync` writes everything in one transaction.
 - HNSW indexes make inserts slower (each insert updates the graph index). For a large backfill into an empty graph,
   you can drop the HNSW indexes, load, and recreate them with a generous `maintenance_work_mem`; and if you keep
   `ApproximateVectorSearch` off, the HNSW indexes only serve your own approximate queries.

@@ -26,11 +26,13 @@ public sealed class PostgresSchemaTests : IAsyncLifetime
         Assert.Equal(
             ["app.graph_communities", "app.graph_community_edges", "app.graph_entities", "app.graph_entity_edges",
                 "app.graph_episodes", "app.graph_episodic_edges", "app.graph_has_episode_edges",
-                "app.graph_next_episode_edges", "app.graph_sagas", "app.graph_search_statistics"],
+                "app.graph_next_episode_edges", "app.graph_sagas", "app.graph_search_statistics",
+                "app.graph_search_term_counts"],
             tables.Select(t => t.QualifiedName));
         Assert.Equal(typeof(EntityNodeRecord), tables.Single(t => t.Name == "graph_entities").RecordType);
         Assert.Equal(typeof(EntityEdgeRecord), tables.Single(t => t.Name == "graph_entity_edges").RecordType);
         Assert.Null(tables.Single(t => t.Name == "graph_search_statistics").RecordType);
+        Assert.Null(tables.Single(t => t.Name == "graph_search_term_counts").RecordType);
         Assert.Equal("graphiti", GraphitiSchema.Tables()[0].Schema);
     }
 

@@ -51,7 +51,7 @@ internal static class SchemaBuilder
             {
                 var tables = string.Join(
                     ", ",
-                    ours.Append(names.Name(SearchStatisticsSql.Table))
+                    ours.Concat(SearchStatisticsSql.Tables.Select(names.Name))
                         .Select(t => $"{names.QuotedSchema}.{SqlNames.Quote(t)}"));
                 await ExecuteAsync(connection, $"DROP TABLE IF EXISTS {tables} CASCADE", ct).ConfigureAwait(false);
             }
