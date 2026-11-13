@@ -1,24 +1,17 @@
 # Changelog
 
-All notable changes to graphiti-net. Versions follow [Semantic Versioning](https://semver.org/); before 1.0, a
-preview may change the API.
+All notable changes to graphiti-net are written here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the packages follow
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html): before 1.0, a minor version may change the API.
 
-## Unreleased
+## [Unreleased]
 
-### Added
+## [0.1.0] - 2026-11-13
 
-- **SQL Server storage** (`GraphitiNet.SqlServer`): a driver for SQL Server 2025 and Azure SQL through EF Core, with
-  the native `vector` type for vector search, BM25 keyword search (ranked as upstream's Lucene) over a keyword index
-  the driver keeps in step with every write, breadth-first search in one batch, tables in your own `DbContext` and
-  migrations with a schema name and table prefix. It passes the driver conformance suite, and both parity datasets
-  match upstream on it. See [docs/sqlserver.md](docs/sqlserver.md).
-
-## 0.1.0-preview.1
-
-The first public preview. Ported from Python Graphiti
+The first release. Ported from Python Graphiti
 [v0.31.2](https://github.com/getzep/graphiti/releases/tag/v0.31.2).
 
-Packages: `GraphitiNet` and `GraphitiNet.PostgreSql`, for .NET 10.
+Packages: `GraphitiNet`, `GraphitiNet.PostgreSql` and `GraphitiNet.SqlServer`, for .NET 10.
 
 ### Added
 
@@ -38,6 +31,11 @@ Packages: `GraphitiNet` and `GraphitiNet.PostgreSql`, for .NET 10.
 - **Storage**: the in-memory driver (BM25 keyword ranking, save to and load from JSON) and the PostgreSQL driver
   (EF Core, pgvector, BM25 keyword search in SQL with the same tokenisation and ranking as Lucene, a text search language per group, tables in your own `DbContext`
   and migrations, schema name and table prefix). A driver conformance suite both pass.
+- **SQL Server storage** (`GraphitiNet.SqlServer`): a driver for SQL Server 2025 and Azure SQL through EF Core, with
+  the native `vector` type for vector search, BM25 keyword search (ranked as upstream's Lucene) over a keyword index
+  the driver keeps in step with every write, breadth-first search in one batch, tables in your own `DbContext` and
+  migrations with a schema name and table prefix. It passes the driver conformance suite, and both parity datasets
+  match upstream on it. See [docs/sqlserver.md](docs/sqlserver.md).
 - **Utilities**: content chunking, community operations, OpenTelemetry-compatible tracing through `ActivitySource`.
 - **graphiti-net additions**, opt-in or additive: an episode access filter on search applied before the limit,
   strict episode removal, one write at a time per group (`IGroupLock`), a call context on every model call with
@@ -57,4 +55,7 @@ Packages: `GraphitiNet` and `GraphitiNet.PostgreSql`, for .NET 10.
 
 ### Not supported
 
-- Graph databases (Neo4j, FalkorDB, Amazon Neptune, Kuzu). Storage is PostgreSQL or in memory.
+- Graph databases (Neo4j, FalkorDB, Amazon Neptune, Kuzu). Storage is PostgreSQL, SQL Server or in memory.
+
+[Unreleased]: https://github.com/tekthar/graphiti-net/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/tekthar/graphiti-net/releases/tag/v0.1.0

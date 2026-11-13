@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: November 2026, after the first preview (`0.1.0-preview.1`).
+Status: November 2026, after the first release (`0.1.0`).
 
 How we get from requirements to a working port. The requirements themselves are in [requirements.md](requirements.md).
 
@@ -78,8 +78,8 @@ Done and merged:
 - Parity recordings of upstream's answers for two datasets, replayed through the whole pipeline on every commit.
 - A first graph-building evaluation on LongMemEval against Python Graphiti
   ([results](../parity/results/2026-11-12-lme-graph-building.md)).
-- NuGet packaging (`GraphitiNet`, `GraphitiNet.PostgreSql`), a quickstart sample, and the release workflow:
-  `0.1.0-preview.1`.
+- NuGet packaging (`GraphitiNet`, `GraphitiNet.PostgreSql`, `GraphitiNet.SqlServer`), a quickstart sample, and
+  publishing from CI on a version tag: `0.1.0`.
 - Bulk ingest (`AddEpisodeBulkAsync`, with combined entity and fact extraction by default), replayed against a
   recorded upstream `add_episode_bulk` run on every commit.
 - The SQL Server 2025 / Azure SQL driver (`GraphitiNet.SqlServer`): EF Core, the native `vector` type, BM25 keyword

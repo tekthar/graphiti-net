@@ -18,8 +18,8 @@ anything with the `vector` data type. Full-text search is not needed.
 ## Install
 
 ```bash
-dotnet add package GraphitiNet --prerelease
-dotnet add package GraphitiNet.SqlServer --prerelease
+dotnet add package GraphitiNet
+dotnet add package GraphitiNet.SqlServer
 ```
 
 ## Quickstart

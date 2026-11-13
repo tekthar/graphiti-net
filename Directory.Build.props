@@ -8,9 +8,10 @@
     <AnalysisLevel>latest-recommended</AnalysisLevel>
   </PropertyGroup>
 
-  <!-- Packaging. The version of every package is set here, once. -->
+  <!-- Packaging. One version for every package (see CONTRIBUTING.md, "Releasing", and CHANGELOG.md); a VersionSuffix
+       makes a prerelease. -->
   <PropertyGroup>
-    <Version>0.1.0-preview.1</Version>
+    <VersionPrefix>0.1.0</VersionPrefix>
     <Authors>graphiti-net contributors</Authors>
     <Copyright>Copyright 2026 graphiti-net contributors</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

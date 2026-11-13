@@ -2,7 +2,7 @@
 
 Thanks for helping. Issues and pull requests are welcome.
 
-The project is in preview. Start with [docs/requirements.md](docs/requirements.md) and the
+Before 1.0 the API may still change. Start with [docs/requirements.md](docs/requirements.md) and the
 [roadmap](docs/roadmap.md), and open an issue before large changes so we can agree on the approach.
 
 Build and test with `dotnet test GraphitiNet.slnx`. Warnings are errors. The PostgreSQL tests need PostgreSQL with
@@ -38,16 +38,23 @@ this project is an independent rewrite.
 
 ## Releasing
 
-1. Set `<Version>` in [Directory.Build.props](Directory.Build.props). It is the only place the version lives.
-2. Add the release to [CHANGELOG.md](CHANGELOG.md).
-3. Check the packages: `dotnet pack GraphitiNet.slnx -c Release -o artifacts/packages`. CI also packs every commit
-   and keeps the packages as the `packages` artifact.
-4. Merge, then tag the commit with `v` and the version, for example `git tag -s v0.1.0-preview.1`, and push the tag.
+The version is `VersionPrefix` and `VersionSuffix` in [Directory.Build.props](Directory.Build.props), and
+[CHANGELOG.md](CHANGELOG.md) needs an entry for it (`scripts/check-release.sh` checks both). Pushing the tag
+`v<version>`, such as `v0.2.0`, runs the checks in [ci.yml](.github/workflows/ci.yml). GitHub Actions then pushes the
+packages and their symbol packages to nuget.org and makes a GitHub release.
 
-The [release workflow](.github/workflows/release.yml) checks that the tag matches the version, builds, runs the tests
-against PostgreSQL, packs, and pushes the packages and their symbol packages to nuget.org. It needs one repository
-secret, `NUGET_API_KEY`: a nuget.org API key scoped to push the `GraphitiNet`, `GraphitiNet.PostgreSql` and
-`GraphitiNet.SqlServer` packages (Settings → Secrets and variables → Actions).
+Publishing uses nuget.org's [Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing),
+so no API key is stored anywhere: nuget.org gives the release job a key that lasts an hour. Set it up once:
+
+1. **On nuget.org**, signed in as the account (or organization) that will own the packages: your name, **Trusted
+   Publishing**, add a policy with owner `tekthar`, repository `graphiti-net`, workflow file `ci.yml` (the file name
+   only) and environment `release`. Let it publish new packages, for packages matching `GraphitiNet*`.
+2. **On GitHub**, in the repository's **Settings**:
+   - **Environments:** add `release`. Limit it to tags `v*` and, if you like, require a reviewer, so a tag waits for
+     a person before anything is pushed.
+   - **Secrets and variables, Actions, Variables:** add `NUGET_USER`, the nuget.org profile name (not the email) of
+     the account in step 1.
+3. **Release:** push the tag, `git tag v<version> && git push origin v<version>`.
 
 ## Code of conduct
 

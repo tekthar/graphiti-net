@@ -17,7 +17,7 @@ in-memory graph driver. For production storage, add
 ## Install
 
 ```bash
-dotnet add package GraphitiNet --prerelease
+dotnet add package GraphitiNet
 ```
 
 ## Quickstart

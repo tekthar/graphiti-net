@@ -1,7 +1,7 @@
 # graphiti-net
 
 [![CI](https://github.com/tekthar/graphiti-net/actions/workflows/ci.yml/badge.svg)](https://github.com/tekthar/graphiti-net/actions/workflows/ci.yml)
-[![NuGet](https://img.shields.io/nuget/vpre/GraphitiNet.svg)](https://www.nuget.org/packages/GraphitiNet)
+[![NuGet](https://img.shields.io/nuget/v/GraphitiNet.svg)](https://www.nuget.org/packages/GraphitiNet)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **Temporal knowledge graphs for AI agents, in .NET.**
@@ -17,7 +17,7 @@ it came from.
 
 ## Status
 
-**Preview** (`0.1.0-preview.1`). The API follows Python Graphiti v0.31.2 and may still change before 1.0. See the
+**`0.1.0`**, the first release. The API follows Python Graphiti v0.31.2 and may still change before 1.0. See the
 [changelog](CHANGELOG.md) and the [roadmap](docs/roadmap.md).
 
 | Area | State |
@@ -37,9 +37,9 @@ it came from.
 ## Install
 
 ```bash
-dotnet add package GraphitiNet --prerelease
-dotnet add package GraphitiNet.PostgreSql --prerelease   # for PostgreSQL storage
-dotnet add package GraphitiNet.SqlServer --prerelease    # for SQL Server 2025 / Azure SQL storage
+dotnet add package GraphitiNet
+dotnet add package GraphitiNet.PostgreSql   # for PostgreSQL storage
+dotnet add package GraphitiNet.SqlServer    # for SQL Server 2025 / Azure SQL storage
 ```
 
 | Package | What it holds |

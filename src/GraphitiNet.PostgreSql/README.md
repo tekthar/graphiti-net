@@ -16,8 +16,8 @@ PostgreSQL 13 or later with the pgvector extension (0.5 or later). Most managed 
 ## Install
 
 ```bash
-dotnet add package GraphitiNet --prerelease
-dotnet add package GraphitiNet.PostgreSql --prerelease
+dotnet add package GraphitiNet
+dotnet add package GraphitiNet.PostgreSql
 ```
 
 ## Quickstart
