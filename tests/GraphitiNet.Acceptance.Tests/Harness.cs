@@ -1,9 +1,11 @@
 // Copyright 2026, graphiti-net contributors
 // Licensed under the Apache License, Version 2.0. See LICENSE.
 
+using GraphitiNet.CrossEncoder;
 using GraphitiNet.Driver;
 using GraphitiNet.Driver.InMemory;
 using GraphitiNet.Driver.PostgreSql;
+using GraphitiNet.Driver.SqlServer;
 using Npgsql;
 
 namespace GraphitiNet.Acceptance.Tests;
@@ -15,23 +17,33 @@ public static class Drivers
 
     public const string PostgreSql = "postgresql";
 
-    public static TheoryData<string> All => new() { InMemory, PostgreSql };
+    public const string SqlServer = "sqlserver";
+
+    public static TheoryData<string> All => new() { InMemory, PostgreSql, SqlServer };
 }
 
 /// <summary>
-/// One <see cref="Graphiti"/> over a fresh store, with the scripted model and embedder. On PostgreSQL each harness
-/// uses its own schema, dropped on dispose; the test is skipped when the server cannot be reached.
+/// One <see cref="Graphiti"/> over a fresh store, with the scripted model and embedder. On PostgreSQL and SQL Server
+/// each harness uses its own schema, dropped on dispose; the test is skipped when the server cannot be reached.
 /// </summary>
 public sealed class Harness : IAsyncDisposable
 {
     private readonly string? _schema;
 
-    private Harness(Graphiti graphiti, ScriptedLlm llm, WordHashEmbedder embedder, string? schema)
+    private readonly Func<string, Task> _dropSchema;
+
+    private Harness(
+        Graphiti graphiti,
+        ScriptedLlm llm,
+        WordHashEmbedder embedder,
+        string? schema,
+        Func<string, Task> dropSchema)
     {
         Graphiti = graphiti;
         Llm = llm;
         Embedder = embedder;
         _schema = schema;
+        _dropSchema = dropSchema;
     }
 
     public Graphiti Graphiti { get; }
@@ -40,7 +52,7 @@ public sealed class Harness : IAsyncDisposable
 
     public WordHashEmbedder Embedder { get; }
 
-    /// <summary>The PostgreSQL schema, or <see langword="null"/> in memory.</summary>
+    /// <summary>The PostgreSQL or SQL Server schema, or <see langword="null"/> in memory.</summary>
     public string? Schema => _schema;
 
     public static async Task<Harness> CreateAsync(
@@ -48,9 +60,11 @@ public sealed class Harness : IAsyncDisposable
         ScriptedLlm llm,
         IGroupLock? groupLock = null,
         IModelCallGate? gate = null,
-        IReadOnlyDictionary<string, string>? textSearchConfigs = null)
+        IReadOnlyDictionary<string, string>? textSearchConfigs = null,
+        CrossEncoderClient? crossEncoder = null)
     {
         string? schema = null;
+        Func<string, Task>? dropSchema = null;
         IGraphDriver driver;
         if (driverKind == Drivers.PostgreSql)
         {
@@ -58,12 +72,21 @@ public sealed class Harness : IAsyncDisposable
             schema = Postgres.NewSchema();
             driver = new PostgresDriver(Postgres.ConnectionString, Postgres.Options(schema, textSearchConfigs));
         }
+        else if (driverKind == Drivers.SqlServer)
+        {
+            SqlServerDatabase.SkipIfUnavailable();
+            schema = SqlServerDatabase.NewSchema();
+            dropSchema = SqlServerDatabase.DropSchemaAsync;
+            driver = new SqlServerDriver(
+                SqlServerDatabase.ConnectionString,
+                new SqlServerGraphOptions { Schema = schema, EmbeddingDimension = WordHashEmbedder.Dimension });
+        }
         else
         {
             driver = new InMemoryGraphDriver();
         }
 
-        return await CreateAsync(driver, llm, groupLock, gate, schema);
+        return await CreateAsync(driver, llm, groupLock, gate, schema, dropSchema, crossEncoder);
     }
 
     public static async Task<Harness> CreateAsync(
@@ -71,18 +94,20 @@ public sealed class Harness : IAsyncDisposable
         ScriptedLlm llm,
         IGroupLock? groupLock = null,
         IModelCallGate? gate = null,
-        string? schema = null)
+        string? schema = null,
+        Func<string, Task>? dropSchema = null,
+        CrossEncoderClient? crossEncoder = null)
     {
         var embedder = new WordHashEmbedder();
         var graphiti = new Graphiti(
             driver,
             llm,
             embedder,
-            new WordOverlapCrossEncoder(),
+            crossEncoder ?? new WordOverlapCrossEncoder(),
             groupLock: groupLock,
             modelCallGate: gate);
         await graphiti.BuildIndicesAndConstraintsAsync();
-        return new Harness(graphiti, llm, embedder, schema);
+        return new Harness(graphiti, llm, embedder, schema, dropSchema ?? Postgres.DropSchemaAsync);
     }
 
     public static string NewGroup() => "g" + Guid.NewGuid().ToString("N")[..12];
@@ -92,7 +117,7 @@ public sealed class Harness : IAsyncDisposable
         await Graphiti.DisposeAsync();
         if (_schema is not null)
         {
-            await Postgres.DropSchemaAsync(_schema);
+            await _dropSchema(_schema);
         }
     }
 }

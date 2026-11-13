@@ -6,6 +6,19 @@ All notable changes to graphiti-net are written here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Reads that apply the episode access filter** (#10): `Graphiti.GetGroupGraphAsync` (a group's entities and the
+  facts that start at them, paged), `GetFactsByNodeUuidAsync` (a node's edges) and `GetGroupEpisodesAsync` (a group's
+  episodes, paged), also as `GraphitiNet.Search.VisibleReads` over any driver. They use search's visibility rules,
+  so search and reads agree on what one user can see; pages hold up to `limit` visible records and the cursor is the
+  last id scanned, so paging stays stable under filtering. Without a filter they return what the `Nodes` and `Edges`
+  namespace methods return. See [docs/api-compatibility.md](docs/api-compatibility.md).
+- **`PassThroughCrossEncoderClient`** (#6): a cross-encoder that keeps the given order and scores each passage by
+  its rank, for hosts with no reranking model. With it the fact and episode cross-encoder rerankers give the RRF
+  order. The default is still `OpenAIRerankerClient`.
+- The acceptance tests also run on SQL Server.
+
 ## [0.1.0] - 2026-11-13
 
 The first release. Ported from Python Graphiti
