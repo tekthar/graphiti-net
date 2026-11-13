@@ -94,6 +94,14 @@ Next:
 
 - Local embedding models ([#3](https://github.com/tekthar/graphiti-net/issues/3)): no vector cutting by default, query
   and document prefixes, no API key for a local server, and a tested Ollama path.
+- What the first consumer had to work around in `0.1.0`. All of it is additive, and default behaviour stays upstream's:
+  - a built-in reranker that keeps the given order ([#6](https://github.com/tekthar/graphiti-net/issues/6));
+  - group locks that hold across servers ([#7](https://github.com/tekthar/graphiti-net/issues/7));
+  - a typed error when the database can't store vectors
+    ([#8](https://github.com/tekthar/graphiti-net/issues/8));
+  - an idempotency key on `AddEpisodeAsync` ([#9](https://github.com/tekthar/graphiti-net/issues/9));
+  - reads with the episode access filter applied ([#10](https://github.com/tekthar/graphiti-net/issues/10));
+  - a public list of each driver's table names ([#11](https://github.com/tekthar/graphiti-net/issues/11)).
 - A larger LongMemEval run, on PostgreSQL as well as in memory, then DMR and LoCoMo: the release gate for 1.0.
 
 ## Phases
