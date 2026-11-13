@@ -50,7 +50,8 @@ Packages: `GraphitiNet` and `GraphitiNet.PostgreSql`, for .NET 10.
 ### Known gaps
 
 - Benchmarks so far: LongMemEval graph building against Python Graphiti (36 and 100 messages, within upstream's
-  run-to-run variation). LongMemEval QA, DMR and LoCoMo runs come before 1.0.
+  run-to-run variation). LongMemEval question answering on 24 questions: graphiti-net 21/24, Python Graphiti 18/24 and 19/24. DMR and
+  LoCoMo runs come before 1.0.
 - The default LLM model is upstream's, which may not be available on every OpenAI account; set a model in
   `LLMConfig`.
 
