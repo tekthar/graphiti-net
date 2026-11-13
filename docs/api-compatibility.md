@@ -372,6 +372,39 @@ search hides facts, entities and episodes behind episodes the caller may not rea
 the limit is filled from visible results; communities are not returned. `SearchResults.NodeEpisodeUuids` says which
 episodes stand behind each entity. See `GraphitiNet.Search.IEpisodeAccessFilter` for the rules.
 
+### Reads that apply the episode access filter
+
+Upstream's read methods (`Nodes.*` and `Edges.*`: `GetByGroupIdsAsync`, `GetByUuidsAsync`, `GetByNodeUuidAsync`,
+`RetrieveEpisodesAsync`) do not take the filter. For a host that shows users the graph, `Graphiti` adds reads that
+apply it with the same rules as search (the code is shared, so the two cannot disagree):
+
+| Method | Returns | Without a filter, the same as |
+|---|---|---|
+| `GetGroupGraphAsync(groupId, episodeAccessFilter, limit, cursor)` | `GroupGraphPage`: up to `limit` visible entities and the visible facts that start at the entities the page scanned | `Nodes.Entity.GetByGroupIdsAsync([groupId], limit, cursor)`, with each entity's outgoing facts from `Edges.Entity.GetByNodeUuidAsync` |
+| `GetFactsByNodeUuidAsync(nodeUuid, episodeAccessFilter)` | the visible facts that start or end at an entity | `Edges.Entity.GetByNodeUuidAsync(nodeUuid)` |
+| `GetGroupEpisodesAsync(groupId, episodeAccessFilter, limit, cursor)` | `RecordPage<EpisodicNode>`: up to `limit` readable episodes | `Nodes.Episode.GetByGroupIdsAsync([groupId], limit, cursor)` |
+
+A fact is visible only if every episode it came from is readable; an entity is judged by the episodes in its group
+that mention it (`EntityVisibility`); an episode only if it is readable. Facts and entities are judged separately, as
+in search, so a visible fact can point at a hidden entity, and a hidden entity's visible facts are still returned.
+
+Paging is by descending id with an id cursor, as the driver contract, and stays stable under filtering: a page holds
+up to `limit` *visible* records, and `NextCursor` is the id of the last record *scanned*, visible or not. The read
+fetches underlying pages (`limit * EpisodeAccess.CandidateMultiplier` at a time with a filter) until the page is full
+or the records run out, so only the last page can be short (and may be empty), and records added or removed between
+calls are never returned twice or skip others. Each fact appears on exactly one page of the group graph, the page
+that scanned its source entity. The same reads are available over any `IGraphDriver` as
+`GraphitiNet.Search.VisibleReads`.
+
+### A cross-encoder that does not rerank (`PassThroughCrossEncoderClient`)
+
+`Graphiti` still defaults to `OpenAIRerankerClient` when no cross-encoder is given, as upstream. A host without an
+OpenAI account, or that ranks with reciprocal rank fusion alone, can pass `PassThroughCrossEncoderClient.Instance`
+(`GraphitiNet.CrossEncoder`): it returns the passages in the order given, the passage at rank `i` (from 0) scoring
+`1 / (i + 1)`. Facts and episodes reach the cross-encoder in RRF order, so their cross-encoder rerankers then return
+exactly the RRF result. Entities and communities reach it, as upstream, in the order the search methods found them;
+that equals the RRF order with one search method. `RerankerMinScore` applies to the rank scores.
+
 ### Other
 
 - `Graphiti.CreateInMemory(...)` for demos and tests.

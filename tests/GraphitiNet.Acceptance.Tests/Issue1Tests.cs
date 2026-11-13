@@ -8,7 +8,7 @@ namespace GraphitiNet.Acceptance.Tests;
 
 /// <summary>
 /// AbpAgent's requirements, tekthar/graphiti-net#1. Each test is named after a criterion, runs through the public
-/// <see cref="Graphiti"/> API with a scripted model, and runs in memory and on PostgreSQL.
+/// <see cref="Graphiti"/> API with a scripted model, and runs in memory, on PostgreSQL and on SQL Server.
 /// </summary>
 public class Issue1Tests
 {
