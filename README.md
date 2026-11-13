@@ -163,6 +163,7 @@ The port follows **Graphiti [v0.31.2](https://github.com/getzep/graphiti/release
 
 - [API compatibility](docs/api-compatibility.md): every Python Graphiti call and its graphiti-net equivalent, and
   where behaviour differs.
+- [Feature parity](docs/feature-parity.md): every Graphiti feature, its graphiti-net status, and the release plan.
 - [How Graphiti works](docs/how-graphiti-works.md): episodes, entities, facts, time and search.
 - [PostgreSQL storage](docs/postgresql.md): setup, your own DbContext, migrations, embedding size, languages.
 - [SQL Server storage](docs/sqlserver.md): SQL Server 2025 and Azure SQL; setup, your own DbContext, keyword ranking.

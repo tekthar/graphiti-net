@@ -4,6 +4,9 @@ Status: November 2026, after the first release (`0.1.0`).
 
 How we get from requirements to a working port. The requirements themselves are in [requirements.md](requirements.md).
 
+For every Graphiti feature, whether graphiti-net has it and the release that brings the rest, see
+[feature-parity.md](feature-parity.md).
+
 ## Baseline
 
 The port follows **Graphiti [v0.31.2](https://github.com/getzep/graphiti/releases/tag/v0.31.2)**. Port from that
