@@ -68,7 +68,7 @@ graphiti-net has no graph database. **Neo4j, FalkorDB, Amazon Neptune and Kuzu a
 | --- | --- |
 | `await close()` | `await CloseAsync()` or `await DisposeAsync()` |
 | `build_indices_and_constraints(delete_existing=False)` | `BuildIndicesAndConstraintsAsync(deleteExisting = false)` |
-| `add_episode(name, episode_body, source_description, reference_time, source=EpisodeType.message, group_id=None, uuid=None, update_communities=False, entity_types=None, excluded_entity_types=None, previous_episode_uuids=None, edge_types=None, edge_type_map=None, custom_extraction_instructions=None, saga=None, saga_previous_episode_uuid=None)` | `AddEpisodeAsync(name, episodeBody, sourceDescription, referenceTime, source = EpisodeType.Message, groupId = null, uuid = null, updateCommunities = false, entityTypes = null, excludedEntityTypes = null, previousEpisodeUuids = null, edgeTypes = null, edgeTypeMap = null, customExtractionInstructions = null, saga = null, sagaPreviousEpisodeUuid = null, episodeMetadata = null, cancellationToken)` → `AddEpisodeResults` |
+| `add_episode(name, episode_body, source_description, reference_time, source=EpisodeType.message, group_id=None, uuid=None, update_communities=False, entity_types=None, excluded_entity_types=None, previous_episode_uuids=None, edge_types=None, edge_type_map=None, custom_extraction_instructions=None, saga=None, saga_previous_episode_uuid=None)` | `AddEpisodeAsync(name, episodeBody, sourceDescription, referenceTime, source = EpisodeType.Message, groupId = null, uuid = null, updateCommunities = false, entityTypes = null, excludedEntityTypes = null, previousEpisodeUuids = null, edgeTypes = null, edgeTypeMap = null, customExtractionInstructions = null, saga = null, sagaPreviousEpisodeUuid = null, episodeMetadata = null, idempotencyKey = null, cancellationToken)` → `AddEpisodeResults` |
 | `add_episode_bulk(bulk_episodes, group_id=None, entity_types=None, excluded_entity_types=None, edge_types=None, edge_type_map=None, strict_edge_types=False, custom_extraction_instructions=None, saga=None, use_combined_extraction=True)` | `AddEpisodeBulkAsync(bulkEpisodes, groupId, entityTypes, excludedEntityTypes, edgeTypes, edgeTypeMap, strictEdgeTypes = false, customExtractionInstructions, saga, useCombinedExtraction = true, cancellationToken)` → `AddBulkEpisodeResults` |
 | `add_triplet(source_node, edge, target_node, episode=None)` | `AddTripletAsync(sourceNode, edge, targetNode, episode = null)` → `AddTripletResults` |
 | `retrieve_episodes(reference_time, last_n=EPISODE_WINDOW_LEN, group_ids=None, source=None, saga=None)` | `RetrieveEpisodesAsync(referenceTime, lastN = Graphiti.EpisodeWindowLen, groupIds, source, saga)` |
@@ -96,7 +96,7 @@ Constants: `EPISODE_WINDOW_LEN` → `Graphiti.EpisodeWindowLen`; `SAGA_SUMMARY_M
 | `edge_type_map: dict[tuple[str, str], list[str]]` | `IReadOnlyDictionary<(string Source, string Target), IReadOnlyList<string>>`, for example `{ [("Person", "Company")] = ["WORKS_AT"] }` |
 | `excluded_entity_types: list[str]` | `IReadOnlyList<string>` |
 | `saga: str \| SagaNode` | `SagaReference`, which converts implicitly from a `string` name or a `SagaNode` |
-| `RawEpisode(name, uuid, content, source_description, source, reference_time)` | `RawEpisode { Name, Uuid, Content, SourceDescription, Source, ReferenceTime, EpisodeMetadata }` |
+| `RawEpisode(name, uuid, content, source_description, source, reference_time)` | `RawEpisode { Name, Uuid, Content, SourceDescription, Source, ReferenceTime, EpisodeMetadata, IdempotencyKey }` |
 | `EntityTypeValidationError`, `ValueError` from validation | `EntityTypeValidationException`, `ArgumentException` (same message) |
 | `NodeNotFoundError`, `EdgeNotFoundError` | `NodeNotFoundException`, `EdgeNotFoundException` |
 | `GroupIdValidationError` | `GroupIdValidationException` |
@@ -105,7 +105,7 @@ Constants: `EPISODE_WINDOW_LEN` → `Graphiti.EpisodeWindowLen`; `SAGA_SUMMARY_M
 
 | Upstream | graphiti-net |
 | --- | --- |
-| `AddEpisodeResults(episode, episodic_edges, nodes, edges, communities, community_edges)` | `AddEpisodeResults { Episode, EpisodicEdges, Nodes, Edges, Communities, CommunityEdges, TokenUsage, TokenUsageByPrompt }` |
+| `AddEpisodeResults(episode, episodic_edges, nodes, edges, communities, community_edges)` | `AddEpisodeResults { Episode, EpisodicEdges, Nodes, Edges, Communities, CommunityEdges, TokenUsage, TokenUsageByPrompt, Replayed }` |
 | `AddBulkEpisodeResults(episodes, ...)` | `AddBulkEpisodeResults { Episodes, EpisodicEdges, Nodes, Edges, Communities, CommunityEdges, TokenUsage, TokenUsageByPrompt }` |
 | `AddTripletResults(nodes, edges)` | `AddTripletResults { Nodes, Edges }` |
 | `SearchResults(edges, edge_reranker_scores, nodes, node_reranker_scores, episodes, episode_reranker_scores, communities, community_reranker_scores)` | `SearchResults { Edges, EdgeRerankerScores, Nodes, NodeRerankerScores, Episodes, EpisodeRerankerScores, Communities, CommunityRerankerScores, NodeEpisodeUuids }`; `SearchResults.merge` → `SearchResults.Merge` |
@@ -355,6 +355,33 @@ a `Graphiti` operation, with a `ModelCallInfo` (kind, prompt, operation, group, 
 a refused episode stays saved but unprocessed; process it later with `AddEpisodeAsync(..., uuid:
 exception.EpisodeUuid)`, which reuses the stored content. Without a gate nothing is saved until the end, as upstream.
 The `CancellationToken` is checked between pipeline steps.
+
+### Idempotency keys on episodes
+
+`AddEpisodeAsync(..., idempotencyKey: "...")` and `RawEpisode.IdempotencyKey` let a host retry a failed call without a
+second episode, and without looking the episode up first (upstream's way out is to find the saved episode and pass its
+`uuid`). The key is stored as `EpisodicNode.IdempotencyKey`, unique per group (at most
+`Graphiti.MaxIdempotencyKeyLength`, 255, characters; compared exactly), and cannot be combined with `uuid`. With a key,
+the episode is saved under it before any model call. A later call with the same key in the group:
+
+| Earlier call | This call |
+| --- | --- |
+| none | creates the episode, as without a key |
+| saved the episode, failed before its entities and facts were saved (extraction, deduplication, resolution, a refused model call) | processes the stored episode (its stored name, content, source, reference time and metadata; the other content arguments are ignored, as with `uuid`) |
+| saved its entities and facts (they are saved with the episode in one transaction) | extracts nothing: returns the stored episode, entities, facts and mentions with `AddEpisodeResults.Replayed = true` and no token usage, joins the saga if the earlier call did not get to it, and updates communities when `updateCommunities` is set |
+
+An episode counts as processed once it mentions an entity or states a fact; one from which nothing was extracted is
+processed again, which cannot duplicate anything. In `AddEpisodeBulkAsync`, processed episodes are left out of
+extraction and returned with what is stored for them, the others are processed with the batch, and a saga gets only
+the episodes it does not have yet; keys must be distinct within a batch.
+
+Concurrency: the unique index on (group, key) decides, so two concurrent calls with one key create one episode
+(`IEpisodeNodeOperations.AddOrGetByIdempotencyKeyAsync` saves the episode or returns the one that holds the key).
+Under the default group lock the second call waits and then replays the first call's result. Without a lock shared by
+both callers (`NoGroupLock`, or several servers with the in-process lock) both may process the one episode, so use a
+distributed `IGroupLock` there. Without a key, behaviour is upstream's. Existing PostgreSQL and SQL Server databases
+get the new column and index from `BuildIndicesAndConstraintsAsync`; EF Core migration users add a migration (see
+[postgresql.md](postgresql.md#upgrading-from-010) and [sqlserver.md](sqlserver.md#upgrading-from-010)).
 
 ### Strict episode removal and clearing a group
 

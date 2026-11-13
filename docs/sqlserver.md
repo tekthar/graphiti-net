@@ -126,6 +126,29 @@ Teams that manage schemas with EF Core migrations don't need `BuildIndicesAndCon
 `BuildIndicesAndConstraintsAsync` and migrations produce the same tables. If you start with the former and move to
 migrations later, mark the initial migration as applied instead of running it.
 
+### Upgrading from 0.1.0
+
+The next release adds idempotency keys on episodes
+([#9](https://github.com/tekthar/graphiti-net/issues/9)): a nullable `idempotency_key nvarchar(255)` column (binary
+collation) on `episodes` and a unique index `ux_episodes_group_id_idempotency_key` on (`group_id`, `idempotency_key`),
+filtered on `[idempotency_key] IS NOT NULL` so rows without a key never collide. Existing rows need no change.
+
+- **`BuildIndicesAndConstraintsAsync`:** call it once after upgrading the package; it adds the column and the index to
+  an existing database. It is idempotent.
+- **EF Core migrations:** add a migration after upgrading (`dotnet ef migrations add GraphitiIdempotencyKeys`). It
+  contains, for your schema and prefix:
+
+  ```csharp
+  migrationBuilder.AddColumn<string>(
+      name: "idempotency_key", schema: "graphiti", table: "episodes", type: "nvarchar(255)", maxLength: 255,
+      collation: "Latin1_General_100_BIN2", nullable: true);
+  migrationBuilder.CreateIndex(
+      name: "ux_episodes_group_id_idempotency_key", schema: "graphiti", table: "episodes",
+      columns: new[] { "group_id", "idempotency_key" }, unique: true, filter: "[idempotency_key] IS NOT NULL");
+  ```
+
+  Until the migration is applied, every episode write fails with "Invalid column name 'idempotency_key'".
+
 ## Schema
 
 All tables live in `Schema`, named `TablePrefix` + the name below. Ids, group ids and edge endpoints are
@@ -136,7 +159,7 @@ Times are `datetimeoffset`, stored in UTC.
 
 | Table | Holds | Notable columns and indexes |
 | --- | --- | --- |
-| `episodes` | Episodes | `content`, `source`, `source_description`, `valid_at` (indexed with `group_id`), `entity_edges`, `episode_metadata` |
+| `episodes` | Episodes | `content`, `source`, `source_description`, `valid_at` (indexed with `group_id`), `entity_edges`, `episode_metadata`, `idempotency_key` (unique with `group_id`, filtered on not null) |
 | `entities` | Entities | `name`, `name_key` (a persisted SHA-256 of the name, indexed with `group_id` for exact-name lookups), `summary`, `labels`, `attributes`, `name_embedding vector(N)` |
 | `communities` | Communities | `name`, `summary`, `name_embedding vector(N)` |
 | `sagas` | Sagas | `name`, `name_key` (indexed with `group_id`), summary bookkeeping |

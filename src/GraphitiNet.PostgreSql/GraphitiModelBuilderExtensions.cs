@@ -47,8 +47,14 @@ public static class GraphitiModelBuilderExtensions
             b.Property(e => e.ValidAt).HasColumnName("valid_at");
             b.Property(e => e.EntityEdges).HasColumnName("entity_edges");
             b.Property(e => e.EpisodeMetadata).HasColumnName("episode_metadata").HasColumnType("jsonb");
+            // Byte-order collation: keys compare exactly, as in every driver.
+            b.Property(e => e.IdempotencyKey).HasColumnName("idempotency_key").UseCollation("C");
             ConfigureSearch(b, t);
             b.HasIndex(e => new { e.GroupId, e.ValidAt }).HasDatabaseName($"ix_{t}_group_id_valid_at");
+            // One episode per (group, key); rows without a key never collide (NULLs are distinct).
+            b.HasIndex(e => new { e.GroupId, e.IdempotencyKey })
+                .IsUnique()
+                .HasDatabaseName($"ux_{t}_group_id_idempotency_key");
             b.HasIndex(e => e.CreatedAt).HasDatabaseName($"ix_{t}_created_at");
         });
 

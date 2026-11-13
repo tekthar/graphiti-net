@@ -146,14 +146,15 @@ internal sealed class DriverCore(Func<DbContext> contextFactory, PostgresGraphOp
             c,
             items,
             UpsertSql(SqlNames.Episodes, "uuid", "group_id", "name", "labels", "created_at", "source",
-                "source_description", "content", "valid_at", "entity_edges", "episode_metadata", "text_search_config",
-                "search_terms", "search_keys", "search_lengths"),
+                "source_description", "content", "valid_at", "entity_edges", "episode_metadata", "idempotency_key",
+                "text_search_config", "search_terms", "search_keys", "search_lengths"),
             (n, i) =>
             [
                 Params.Text(n.Uuid), Params.Text(n.GroupId), Params.Text(n.Name), Params.TextArray(n.Labels),
                 Params.Time(n.CreatedAt), Params.Text(n.Source.ToStorageName()), Params.Text(n.SourceDescription),
                 Params.Text(n.Content), Params.Time(n.ValidAt), Params.TextArray(n.EntityEdges),
-                Params.Jsonb(JsonValues.SerializeNullable(n.EpisodeMetadata)), Config(n.GroupId),
+                Params.Jsonb(JsonValues.SerializeNullable(n.EpisodeMetadata)), Params.Text(n.IdempotencyKey),
+                Config(n.GroupId),
                 Params.Jsonb(search[i].Terms), Params.TextArray(search[i].Keys), Params.IntArray(search[i].Lengths),
             ],
             ct).ConfigureAwait(false);

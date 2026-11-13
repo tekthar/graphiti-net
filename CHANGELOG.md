@@ -6,6 +6,20 @@ All notable changes to graphiti-net are written here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Idempotency keys on episodes** ([#9](https://github.com/tekthar/graphiti-net/issues/9)): `AddEpisodeAsync` takes
+  `idempotencyKey` and `RawEpisode` has `IdempotencyKey`, unique per group. A call that failed after its episode was
+  saved is retried with the same key: an unprocessed episode is resumed, a processed one is replayed
+  (`AddEpisodeResults.Replayed`) without extracting again, so the retry ends with one episode and no duplicate entities
+  or facts. Two concurrent calls with one key create one episode. Stored as `EpisodicNode.IdempotencyKey`; drivers
+  gain `IEpisodeNodeOperations.GetByIdempotencyKeyAsync` and `AddOrGetByIdempotencyKeyAsync` (with default
+  implementations for third-party drivers). Without a key, behaviour is upstream's.
+- **Schema change for PostgreSQL and SQL Server**: the episodes table gets a nullable `idempotency_key` column and a
+  unique index `ux_episodes_group_id_idempotency_key` on (`group_id`, `idempotency_key`).
+  `BuildIndicesAndConstraintsAsync` adds both to a 0.1.0 database (it now adds any column a newer version added to an
+  existing table); hosts on EF Core migrations add a migration, see docs/postgresql.md and docs/sqlserver.md.
+
 ## [0.1.0] - 2026-11-13
 
 The first release. Ported from Python Graphiti
