@@ -6,6 +6,24 @@ All notable changes to graphiti-net are written here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **PostgreSQL keyword search stays fast at a million records, common words included**, with exactly the same
+  results as before (and as the in-memory driver). Each keyword key now carries the term's impact class, so the GIN
+  index finds the rows where a term weighs most, and a search reads only the rows that can still reach its top results
+  (MaxScore by impact class, then a WAND-like pass over combinations of classes) instead of every row holding a common
+  word. Document frequencies, group sizes and the text search configurations in use come from a new
+  `search_term_counts` table kept by the statistics triggers, instead of counting through the GIN index (or scanning
+  the table) on every search. On a synthetic graph of 1M mostly Arabic records, queries made only of common words went
+  from about 1 s (one large tenant) and 2-3 s (all groups) to 20-40 ms and 45-60 ms at the median; no case of the
+  benchmark is slower than 96 ms at the median. See [the benchmark](docs/benchmarks/postgresql-keyword-search.md),
+  which `tools/GraphitiNet.Bench` reproduces. Bulk saves send one multi-row statement per batch; keeping the counts
+  still makes them about half as fast at that size, and a single save about 2 ms slower. Upgrading:
+  `BuildIndicesAndConstraintsAsync` (or `GraphitiSchemaSql.SearchStatistics` in a migration) converts the keyword
+  index of rows written by 0.1 once, rewriting each searchable row (12 minutes per million rows without embeddings);
+  searches stay exact on unconverted rows. See
+  [Upgrading from 0.1](docs/postgresql.md#upgrading-from-01).
+
 ## [0.1.0] - 2026-11-13
 
 The first release. Ported from Python Graphiti
