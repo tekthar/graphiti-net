@@ -113,7 +113,9 @@ public sealed class SqlServerDriver : IGraphDriver
     /// <inheritdoc />
     /// <remarks><see cref="IGraphMaintenanceOperations.BuildIndicesAndConstraintsAsync"/> creates the
     /// schema and any missing tables with their indexes, from the EF Core model; with
-    /// <c>deleteExisting</c> it drops the tables first (all data is lost).</remarks>
+    /// <c>deleteExisting</c> it drops the tables first (all data is lost). <see cref="GraphitiSchema.Tables"/> lists
+    /// the tables. It throws <see cref="VectorStoreUnavailableException"/> when the database has no <c>vector</c> type
+    /// (SQL Server before 2025).</remarks>
     public IGraphMaintenanceOperations GraphOps { get; }
 
     /// <inheritdoc />
@@ -139,6 +141,18 @@ public sealed class SqlServerDriver : IGraphDriver
             },
             cancellationToken);
     }
+
+    /// <summary>
+    /// Checks, without creating anything, whether the database can hold the embedding vectors: whether it has the
+    /// <c>vector</c> type (SQL Server 2025, Azure SQL Database, Azure SQL Managed Instance with a SQL Server 2025 or
+    /// Always-up-to-date update policy). Run it before
+    /// <see cref="IGraphMaintenanceOperations.BuildIndicesAndConstraintsAsync"/>, which otherwise throws
+    /// <see cref="VectorStoreUnavailableException"/> with what is missing and how to fix it.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the check.</param>
+    /// <returns><see langword="true"/> when the database can hold vectors.</returns>
+    public Task<bool> CanHoldVectorsAsync(CancellationToken cancellationToken = default) =>
+        _core.WithConnectionAsync(db => VectorSupport.HasVectorTypeAsync(db, cancellationToken), cancellationToken);
 
     /// <summary>Nothing to release: connections return to SqlClient's pool after each operation.</summary>
     /// <returns>A completed task.</returns>

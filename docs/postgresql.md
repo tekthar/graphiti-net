@@ -29,6 +29,18 @@ reads each searchable table once. It runs in one transaction under an advisory l
 it at start-up. `BuildIndicesAndConstraintsAsync(deleteExisting: true)` drops the tables first: **all graph data is
 lost**.
 
+When the database cannot hold vectors, `BuildIndicesAndConstraintsAsync` throws `VectorStoreUnavailableException`
+(namespace `GraphitiNet.Driver`), with the `PostgresException` as its inner exception. Its message names the database,
+what is missing and the fix, so a host can show it to its administrator as it is; `Reason` says which case it is:
+
+- `NotInstalled`: pgvector is not installed on the PostgreSQL server. Install it (or, on a managed service, allow the
+  `vector` extension in its settings).
+- `NotPermitted`: pgvector is installed, but the extension does not exist in the database and the connecting role may
+  not create it. Have a superuser run `CREATE EXTENSION vector;` in that database once; the build then leaves it alone.
+
+`await driver.CanHoldVectorsAsync()` answers the same question before setup without creating anything: it is `true`
+when the extension exists in the database, or is installed and the role may create it.
+
 Options:
 
 ```csharp
@@ -177,6 +189,12 @@ driver computes when it writes a row:
 
 Three statement-level triggers on each of them keep `search_statistics` current.
 
+`GraphitiSchema.Tables(options)` lists these tables for a schema name and table prefix, without a database: each
+`GraphitiTable` has the `Schema`, the `Name` (with the prefix), the `QualifiedName` and the `RecordType` it holds
+(`null` for `search_statistics`). Use it for a data map, a backup or retention policy, or a test that lists the
+schema. It reads the same EF Core model `BuildIndicesAndConstraintsAsync` creates the tables from, and a test checks
+the two against each other.
+
 ## Embedding size
 
 The vector size is part of the schema (`vector(N)`), set by `EmbeddingDimension`; the default 1024 matches upstream's
@@ -295,3 +313,13 @@ schema at 1024 dimensions, once with a fresh schema per test) plus PostgreSQL-sp
 connection string from `GRAPHITI_TEST_POSTGRES` (default
 `Host=localhost;Username=postgres;Password=postgres;Database=graphiti_pg_tests`), create the database if it is
 missing, and work in schemas of their own. The PostgreSQL-specific tests skip when the server is unreachable.
+
+Two tests cover `VectorStoreUnavailableException`. The "not permitted" one needs only the test server: it creates a
+fresh database (where the extension does not exist yet) and a role without superuser rights, then drops both. The
+"not installed" one needs a PostgreSQL server without pgvector, named by `GRAPHITI_TEST_POSTGRES_NO_PGVECTOR`, and
+skips without it; CI runs the plain `postgres:16` image for it:
+
+```bash
+docker run -d --name pg-novector -e POSTGRES_PASSWORD=postgres -p 5433:5432 postgres:16
+export GRAPHITI_TEST_POSTGRES_NO_PGVECTOR="Host=localhost;Port=5433;Username=postgres;Password=postgres;Database=postgres"
+```

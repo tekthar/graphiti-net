@@ -37,6 +37,14 @@ Core model a migration would use, so the two never disagree. It runs in one tran
 (`sp_getapplock`), so several app instances may call it at start-up. `BuildIndicesAndConstraintsAsync(deleteExisting:
 true)` drops the eleven tables first: **all graph data is lost**.
 
+On a database without the `vector` type (SQL Server 2022 or earlier, Azure SQL Edge), `BuildIndicesAndConstraintsAsync`
+throws `VectorStoreUnavailableException` (namespace `GraphitiNet.Driver`, `Reason` `NotSupported`) before it creates
+anything. Its message names the database, the server version, and the fix: SQL Server 2025, Azure SQL Database, or
+Azure SQL Managed Instance with the SQL Server 2025 or Always-up-to-date update policy. A host can show it to its
+administrator as it is. `await driver.CanHoldVectorsAsync()` answers the same question before setup without creating
+anything. (The type is a property of the engine: on SQL Server 2025 it is there at every database compatibility
+level.)
+
 Options:
 
 ```csharp
@@ -152,6 +160,12 @@ Every edge table has an index on (source, target) and one on target. Edges refer
 keys, as in a graph database: deleting a node deletes every edge touching it, and their keyword index rows, in one
 transaction.
 
+`GraphitiSchema.Tables(options)` lists these eleven tables for a schema name and table prefix, without a database:
+each `GraphitiTable` has the `Schema`, the `Name` (with the prefix), the `QualifiedName` and the `RecordType` it holds
+(for the keyword index, `SearchTermRecord` and `SearchFieldRecord`). Use it for a data map, a backup or retention
+policy, or a test that lists the schema. It reads the same EF Core model `BuildIndicesAndConstraintsAsync` creates the
+tables from, and a test checks the two against each other.
+
 ## Embedding size
 
 The vector size is part of the schema (`vector(N)`), set by `EmbeddingDimension`; the default 1024 matches upstream's
@@ -213,5 +227,15 @@ round trips and keyword search, exact collation, keyword index maintenance and r
 They read the connection string from `GRAPHITI_TEST_SQLSERVER` (default
 `Server=localhost,1433;Database=graphiti_sqlserver_tests;User Id=sa;Password=Graphiti_dev_Passw0rd;TrustServerCertificate=True`,
 the container above), create the database if it is missing, work in schemas of their own, and skip when the server is
-unreachable. The parity replay (`tests/GraphitiNet.Parity.Tests`) runs both datasets on SQL Server with the same
+unreachable. The `VectorStoreUnavailableException` test needs a SQL Server without the `vector` type, named by
+`GRAPHITI_TEST_SQLSERVER_NO_VECTOR` (it creates the database if missing), and skips without it; CI runs SQL Server 2022
+for it (lowering the compatibility level of a SQL Server 2025 database does not remove the type):
+
+```bash
+docker run -d --name mssql2022 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Graphiti_dev_Passw0rd' \
+  -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
+export GRAPHITI_TEST_SQLSERVER_NO_VECTOR="Server=localhost,1434;Database=graphiti_novector_tests;User Id=sa;Password=Graphiti_dev_Passw0rd;TrustServerCertificate=True"
+```
+
+The parity replay (`tests/GraphitiNet.Parity.Tests`) runs both datasets on SQL Server with the same
 variable.
