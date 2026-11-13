@@ -331,7 +331,9 @@ These are opt-in or additive; with the defaults, behaviour matches upstream exce
 whole call, so two episodes added to one group at once cannot both create the same entity. The
 default `InProcessGroupLock.Shared` works within one process (shared by every `Graphiti` instance in it). Pass your own
 `IGroupLock` (`ValueTask<IAsyncDisposable> AcquireAsync(string groupId, CancellationToken)`) for a distributed lock
-when several servers write to one database, or `NoGroupLock.Instance` for upstream's behaviour.
+when several servers write to one database (the drivers ship `PostgresGroupLock` and `SqlServerGroupLock`; see
+[drivers.md](drivers.md#several-app-servers-a-group-lock-per-database)), or `NoGroupLock.Instance` for upstream's
+behaviour.
 
 ### Call context on every model call (`GraphitiCallContext`)
 

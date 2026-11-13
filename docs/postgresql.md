@@ -278,6 +278,54 @@ The selector wins, then the dictionary, then the default. Each row stores the co
 is matched against the query normalised with that same configuration, so a search across groups with different
 languages works. A group's configuration must not change once it has data; re-save its rows if it does.
 
+## Several app servers: `PostgresGroupLock`
+
+`Graphiti` runs one write at a time per group (see `IGroupLock` in [api-compatibility.md](api-compatibility.md)), but
+its default lock, `InProcessGroupLock.Shared`, works only within one process. When several app servers write to one
+database, give every `Graphiti` instance on every server a `PostgresGroupLock`, with the driver's connection string and
+options:
+
+```csharp
+var options = new PostgresGraphOptions { Schema = "graphiti", EmbeddingDimension = 1024 };
+var driver = new PostgresDriver(connectionString, options);
+await using var graphiti = new Graphiti(
+    driver, llm, embedder, reranker,
+    groupLock: new PostgresGroupLock(connectionString, options));
+
+// With dependency injection: one lock per process.
+services.AddSingleton<IGroupLock>(_ => new PostgresGroupLock(connectionString, options));
+```
+
+- **How it locks.** Each group's lock is a session-level advisory lock, `pg_advisory_lock(key1, key2)`, taken on a
+  connection of its own with pooling off, so it is released exactly when the operation ends (a pooled connection
+  would keep it after going back to the pool, or lose it to a session reset). One held group uses one connection; the
+  operations of one process waiting for one group queue in process and use none, so only the next in line waits in
+  PostgreSQL. The wait has no time limit: the lock's session sets `statement_timeout`, `lock_timeout` and (14 or
+  later) `idle_session_timeout` to 0.
+- **The key.** The first 8 bytes, big-endian, of the SHA-256 of the UTF-8 text
+  `graphiti-net group lock\0{Schema}\0{TablePrefix}\0{groupId}`: `key1` is the upper 32 bits and `key2` the lower 32
+  bits, as signed integers. Including the schema and prefix keeps two graphs in one database apart. The two-integer
+  form (`objsubid = 2` in `pg_locks`) does not share keys with the single-`bigint` advisory locks the schema build
+  takes. `KeyFor(groupId)` returns the 64-bit key; it is stable across versions, so servers on different
+  graphiti-net versions still exclude each other. To see who holds a group:
+
+  ```sql
+  SELECT l.pid, a.application_name, a.client_addr
+  FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+  WHERE l.locktype = 'advisory' AND l.objsubid = 2 AND l.granted
+    AND ((l.classid::bigint << 32) | l.objid::bigint) = <KeyFor(groupId)>;
+  ```
+- **Cancellation.** Cancelling the operation's token while it waits cancels the waiting statement and closes the
+  connection; no connection and no lock is left behind.
+- **A dropped connection releases the lock.** If the holder's server dies, its backend is terminated or the network
+  fails, PostgreSQL ends the session and the next server goes ahead. The holder is not told and finishes its
+  operation unlocked; releasing afterwards does not throw. Turn on TCP keepalives (`tcp_keepalives_idle` on the
+  server, `Keepalive` in the connection string) so a vanished client is noticed sooner.
+- **Not re-entrant.** As with the in-process lock, an operation must not start another write to a group it already
+  holds (for example from inside a model call): it would wait for itself until cancelled. Independent operations on
+  one group simply take turns. Operations over several groups take them in ordinal order on every server, so they
+  cannot deadlock.
+
 ## Performance notes
 
 - Reads never track entities and never select embeddings or search columns. Vector and graph searches are one round
@@ -312,7 +360,9 @@ The tests in `tests/GraphitiNet.PostgreSql.Tests` run the shared driver conforma
 schema at 1024 dimensions, once with a fresh schema per test) plus PostgreSQL-specific tests. They read the
 connection string from `GRAPHITI_TEST_POSTGRES` (default
 `Host=localhost;Username=postgres;Password=postgres;Database=graphiti_pg_tests`), create the database if it is
-missing, and work in schemas of their own. The PostgreSQL-specific tests skip when the server is unreachable.
+missing, and work in schemas of their own. The PostgreSQL-specific tests skip when the server is unreachable. The
+`PostgresGroupLock` tests (the shared `DistributedGroupLockTests`) run two lock objects and two `Graphiti` instances as
+two servers, cancel a wait, and terminate the holder's backend with `pg_terminate_backend`.
 
 Two tests cover `VectorStoreUnavailableException`. The "not permitted" one needs only the test server: it creates a
 fresh database (where the extension does not exist yet) and a role without superuser rights, then drops both. The

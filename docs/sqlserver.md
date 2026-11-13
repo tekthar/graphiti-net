@@ -205,6 +205,54 @@ indexes populate asynchronously, so a fact saved a moment ago may not be found. 
 the same transaction as the record: one `search_terms` row per distinct term per field and one `search_fields` row per
 non-empty field, rewritten on every save and deleted with the record.
 
+## Several app servers: `SqlServerGroupLock`
+
+`Graphiti` runs one write at a time per group (see `IGroupLock` in [api-compatibility.md](api-compatibility.md)), but
+its default lock, `InProcessGroupLock.Shared`, works only within one process. When several app servers write to one
+database, give every `Graphiti` instance on every server a `SqlServerGroupLock`, with the driver's connection string
+and options:
+
+```csharp
+var options = new SqlServerGraphOptions { Schema = "graphiti", EmbeddingDimension = 1024 };
+var driver = new SqlServerDriver(connectionString, options);
+await using var graphiti = new Graphiti(
+    driver, llm, embedder, reranker,
+    groupLock: new SqlServerGroupLock(connectionString, options));
+
+// With dependency injection: one lock per process.
+services.AddSingleton<IGroupLock>(_ => new SqlServerGroupLock(connectionString, options));
+```
+
+- **How it locks.** Each group's lock is an exclusive application lock owned by the session (`sp_getapplock
+  @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = -1`), taken on a connection of its own with pooling
+  off, so it is released exactly when the operation ends (a pooled connection would keep it after going back to the
+  pool, or lose it to `sp_reset_connection`). One held group uses one connection; the operations of one process
+  waiting for one group queue in process and use none, so only the next in line waits in SQL Server. The wait has no
+  time limit. `sp_getapplock` reports failure in its return value: a negative value (timeout, cancelled, deadlock
+  victim, bad call) means the lock was not granted, and `AcquireAsync` throws `InvalidOperationException`.
+- **The resource.** `graphiti-net:` followed by 16 lower-case hex digits: the first 8 bytes of the SHA-256 of the
+  UTF-8 text `graphiti-net group lock\0{Schema}\0{TablePrefix}\0{groupId}` (the same key as `PostgresGroupLock`).
+  Including the schema and prefix keeps two graphs in one database apart; the hash keeps the name within the 255
+  characters `sp_getapplock` takes and the 32 that `sys.dm_tran_locks` shows. `ResourceFor(groupId)` returns it; it
+  is stable across versions, so servers on different graphiti-net versions still exclude each other. To see who
+  holds a group:
+
+  ```sql
+  SELECT l.request_session_id, s.program_name, s.host_name
+  FROM sys.dm_tran_locks l JOIN sys.dm_exec_sessions s ON s.session_id = l.request_session_id
+  WHERE l.resource_type = 'APPLICATION' AND l.request_status = 'GRANT'
+    AND l.resource_description LIKE '%graphiti-net:<hex>%';
+  ```
+- **Cancellation.** Cancelling the operation's token while it waits cancels the waiting request and closes the
+  connection; no connection and no lock is left behind.
+- **A dropped connection releases the lock.** If the holder's server dies, its session is killed or the network fails,
+  SQL Server ends the session and the next server goes ahead. The holder is not told and finishes its operation
+  unlocked; releasing afterwards does not throw.
+- **Not re-entrant.** As with the in-process lock, an operation must not start another write to a group it already
+  holds (for example from inside a model call): it would wait for itself until cancelled. Independent operations on
+  one group simply take turns. Operations over several groups take them in ordinal order on every server, so they
+  cannot deadlock.
+
 ## Performance notes
 
 - Reads never track entities and never select embeddings; each search is one round trip.
@@ -227,7 +275,10 @@ round trips and keyword search, exact collation, keyword index maintenance and r
 They read the connection string from `GRAPHITI_TEST_SQLSERVER` (default
 `Server=localhost,1433;Database=graphiti_sqlserver_tests;User Id=sa;Password=Graphiti_dev_Passw0rd;TrustServerCertificate=True`,
 the container above), create the database if it is missing, work in schemas of their own, and skip when the server is
-unreachable. The `VectorStoreUnavailableException` test needs a SQL Server without the `vector` type, named by
+unreachable. The `SqlServerGroupLock` tests (the shared `DistributedGroupLockTests`) run two lock objects and two
+`Graphiti` instances as two servers, cancel a wait, and `KILL` the holder's session.
+
+The `VectorStoreUnavailableException` test needs a SQL Server without the `vector` type, named by
 `GRAPHITI_TEST_SQLSERVER_NO_VECTOR` (it creates the database if missing), and skips without it; CI runs SQL Server 2022
 for it (lowering the compatibility level of a SQL Server 2025 database does not remove the type):
 
