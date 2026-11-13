@@ -91,6 +91,14 @@ conformance suite checks:
   episode-access filter uses it.
 - `GetPreviousEpisodeUuidAsync`: the saga's latest episode other than the current one, by `ValidAt` then `CreatedAt`,
   both descending.
+- **Idempotency keys** (`EpisodicNode.IdempotencyKey`): stored with the episode and unique per group; saving an episode
+  whose key another episode of its group has fails (with the backend's exception); episodes without a key never
+  collide. `EpisodeNodeOps.GetByIdempotencyKeyAsync` finds the episode with a key in a group (exact, case-sensitive)
+  or returns `null`. `EpisodeNodeOps.AddOrGetByIdempotencyKeyAsync` saves the episode unless its key is taken, and
+  returns the episode that holds the key; when several callers race with one key, one episode is saved and all get
+  it. The defaults scan `GetByGroupIdsAsync` and catch the save failure of the losing writer; override both with an
+  indexed lookup and an insert that the unique index arbitrates. Core uses them for `AddEpisodeAsync`'s
+  `idempotencyKey`.
 
 ### Search
 

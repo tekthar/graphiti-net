@@ -156,6 +156,28 @@ throws an `InvalidOperationException` saying so, rather than ranking on wrong st
 migrations later, mark the initial migration as applied (insert its id into `__EFMigrationsHistory`) instead of
 running it.
 
+### Upgrading from 0.1.0
+
+The next release adds idempotency keys on episodes
+([#9](https://github.com/tekthar/graphiti-net/issues/9)): a nullable `idempotency_key text COLLATE "C"` column on
+`episodes` and a unique index `ux_episodes_group_id_idempotency_key` on (`group_id`, `idempotency_key`). Rows without
+a key never collide (PostgreSQL treats NULLs as distinct), so existing rows need no change.
+
+- **`BuildIndicesAndConstraintsAsync`:** call it once after upgrading the package, as at every start; it adds the
+  column and the index to an existing database. It is idempotent.
+- **EF Core migrations:** add a migration after upgrading (`dotnet ef migrations add GraphitiIdempotencyKeys`, with
+  `--context GraphitiDbContext` for the standalone context). It contains, for your schema and prefix:
+
+  ```csharp
+  migrationBuilder.AddColumn<string>(
+      name: "idempotency_key", schema: "graphiti", table: "episodes", type: "text", collation: "C", nullable: true);
+  migrationBuilder.CreateIndex(
+      name: "ux_episodes_group_id_idempotency_key", schema: "graphiti", table: "episodes",
+      columns: new[] { "group_id", "idempotency_key" }, unique: true);
+  ```
+
+  Until the migration is applied, every episode write fails with "column idempotency_key does not exist".
+
 ## Schema
 
 All tables live in `Schema`, named `TablePrefix` + the name below. Ids are `text` primary keys with the `C`
@@ -163,7 +185,7 @@ collation, so paging by id is ordinal. Every table has a `group_id` column and i
 
 | Table | Holds | Notable columns and indexes |
 | --- | --- | --- |
-| `episodes` | Episodes | `content`, `source`, `source_description`, `valid_at`, `entity_edges text[]`, `episode_metadata jsonb`; full-text over content, source and source description |
+| `episodes` | Episodes | `content`, `source`, `source_description`, `valid_at`, `entity_edges text[]`, `episode_metadata jsonb`, `idempotency_key` (unique with `group_id`); full-text over content, source and source description |
 | `entities` | Entities | `name` (indexed with `group_id` for exact-name lookups), `summary`, `labels text[]` (GIN), `attributes jsonb` (GIN `jsonb_path_ops`, for attribute-value lookups), `name_embedding vector(N)` (HNSW, cosine); full-text over name and summary |
 | `communities` | Communities | `name`, `summary`, `name_embedding vector(N)` (HNSW); full-text over name |
 | `sagas` | Sagas | `name` (indexed with `group_id`), summary bookkeeping |

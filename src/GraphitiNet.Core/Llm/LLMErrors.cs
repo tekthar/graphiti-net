@@ -20,6 +20,11 @@ public sealed class RateLimitException : GraphitiException
 
     /// <summary>Creates the exception with a message and the provider's exception.</summary>
     public RateLimitException(string message, Exception innerException) : base(message, innerException) { }
+
+    /// <summary>How long the provider asked to wait, if known. <see cref="ModelCallRetryOptions"/> waits this long
+    /// before the next attempt; it also reads the <c>Retry-After</c> header of an inner
+    /// <see cref="System.ClientModel.ClientResultException"/>. A graphiti-net addition.</summary>
+    public TimeSpan? RetryAfter { get; init; }
 }
 
 /// <summary>The LLM refused to generate a response. Upstream: <c>RefusalError</c>.</summary>

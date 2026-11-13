@@ -38,6 +38,13 @@ public sealed record AddEpisodeResults
     /// <summary>Tokens per prompt name for this call. A graphiti-net addition.</summary>
     public IReadOnlyDictionary<string, PromptTokenUsage> TokenUsageByPrompt { get; init; } =
         new Dictionary<string, PromptTokenUsage>();
+
+    /// <summary>
+    /// <see langword="true"/> when the call carried an idempotency key whose episode an earlier call had already
+    /// processed: nothing was extracted again, and the other fields hold what is stored for the episode (its
+    /// entities, its facts, including those it invalidated, and its mentions). A graphiti-net addition.
+    /// </summary>
+    public bool Replayed { get; init; }
 }
 
 /// <summary>What <see cref="Graphiti.AddEpisodeBulkAsync"/> added or changed (upstream
@@ -104,6 +111,12 @@ public sealed record RawEpisode
     /// <summary>Host data stored on the episode (<see cref="EpisodicNode.EpisodeMetadata"/>). A graphiti-net
     /// addition; upstream's <c>RawEpisode</c> has no such field.</summary>
     public IDictionary<string, object?>? EpisodeMetadata { get; init; }
+
+    /// <summary>The host's key for this episode, unique within the group, so the bulk call can be retried safely:
+    /// an episode of the group with the key is resumed instead of created again, as with <c>idempotencyKey</c> in
+    /// <see cref="Graphiti.AddEpisodeAsync"/>. Cannot be combined with <see cref="Uuid"/>. A graphiti-net addition
+    /// (tekthar/graphiti-net#9).</summary>
+    public string? IdempotencyKey { get; init; }
 }
 
 /// <summary>

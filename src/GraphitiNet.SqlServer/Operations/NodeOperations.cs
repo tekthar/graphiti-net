@@ -11,6 +11,7 @@ using System.Text.Json.Nodes;
 using GraphitiNet.Driver.SqlServer.Entities;
 using GraphitiNet.Driver.SqlServer.Internal;
 using GraphitiNet.Models;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlTypes;
 
@@ -23,6 +24,61 @@ internal sealed class EpisodeNodeOperations(DriverCore core)
 {
     public override Task UpsertAsync(Db db, IReadOnlyList<EpisodicNode> items, CancellationToken ct) =>
         Core.UpsertEpisodesAsync(db, items, ct);
+
+    public async Task<EpisodicNode?> GetByIdempotencyKeyAsync(
+        string groupId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(groupId);
+        ArgumentNullException.ThrowIfNull(idempotencyKey);
+        if (groupId.Length > GraphitiModelBuilderExtensions.IdLength
+            || idempotencyKey.Length > GraphitiModelBuilderExtensions.IdLength)
+        {
+            // Longer values cannot be stored, so nothing matches.
+            return null;
+        }
+
+        var found = await ListAsync(
+            q => q.Where(e => e.GroupId == groupId && e.IdempotencyKey == idempotencyKey).Take(1),
+            cancellationToken).ConfigureAwait(false);
+        return found.Count == 0 ? null : found[0];
+    }
+
+    /// <summary>Inserts the episode; when the unique index on (group, key) refuses it, a concurrent or earlier
+    /// writer holds the key, and its episode is returned.</summary>
+    public async Task<EpisodicNode> AddOrGetByIdempotencyKeyAsync(
+        EpisodicNode episode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(episode);
+        var key = episode.IdempotencyKey
+                  ?? throw new ArgumentException("The episode has no idempotency key.", nameof(episode));
+        if (await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false) is { } found)
+        {
+            return found;
+        }
+
+        try
+        {
+            await SaveAsync(episode, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SqlException e) when (e.Number is DuplicateKeyRow or UniqueConstraintViolation)
+        {
+            return await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false)
+                   ?? throw new InvalidOperationException(
+                       $"The idempotency key '{key}' was taken in group '{episode.GroupId}', then released.", e);
+        }
+
+        return await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false)
+               ?? episode;
+    }
+
+    // "Cannot insert duplicate key row in object ... with unique index ..."
+    private const int DuplicateKeyRow = 2601;
+
+    // "Violation of UNIQUE KEY constraint ..."
+    private const int UniqueConstraintViolation = 2627;
 
     public Task<IReadOnlyList<EpisodicNode>> GetByEntityNodeUuidAsync(
         string entityNodeUuid,

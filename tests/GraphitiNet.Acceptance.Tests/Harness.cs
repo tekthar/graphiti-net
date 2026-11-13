@@ -20,6 +20,9 @@ public static class Drivers
     public const string SqlServer = "sqlserver";
 
     public static TheoryData<string> All => new() { InMemory, PostgreSql, SqlServer };
+
+    /// <summary>Every bundled driver; the same as <see cref="All"/>.</summary>
+    public static TheoryData<string> Every => All;
 }
 
 /// <summary>
@@ -61,7 +64,8 @@ public sealed class Harness : IAsyncDisposable
         IGroupLock? groupLock = null,
         IModelCallGate? gate = null,
         IReadOnlyDictionary<string, string>? textSearchConfigs = null,
-        CrossEncoderClient? crossEncoder = null)
+        CrossEncoderClient? crossEncoder = null,
+        Func<IGraphDriver, IGraphDriver>? wrapDriver = null)
     {
         string? schema = null;
         Func<string, Task>? dropSchema = null;
@@ -84,6 +88,11 @@ public sealed class Harness : IAsyncDisposable
         else
         {
             driver = new InMemoryGraphDriver();
+        }
+
+        if (wrapDriver is not null)
+        {
+            driver = wrapDriver(driver);
         }
 
         return await CreateAsync(driver, llm, groupLock, gate, schema, dropSchema, crossEncoder);
