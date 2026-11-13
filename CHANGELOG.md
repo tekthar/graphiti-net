@@ -6,6 +6,16 @@ All notable changes to graphiti-net are written here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Group locks that hold across servers** ([#7](https://github.com/tekthar/graphiti-net/issues/7)):
+  `PostgresGroupLock` (`GraphitiNet.PostgreSql`, `pg_advisory_lock`) and `SqlServerGroupLock`
+  (`GraphitiNet.SqlServer`, `sp_getapplock` owned by the session, negative results thrown). Pass one as
+  `groupLock:` so several app servers writing to one database ingest into a group one at a time. Each holds its lock
+  on an unpooled connection of its own, keyed by a SHA-256 of the schema, table prefix and group id; releases it on
+  dispose, when the connection drops, or when a wait is cancelled; and queues waiters within one process without a
+  connection each. See [docs/drivers.md](docs/drivers.md#several-app-servers-a-group-lock-per-database).
+
 ## [0.1.0] - 2026-11-13
 
 The first release. Ported from Python Graphiti

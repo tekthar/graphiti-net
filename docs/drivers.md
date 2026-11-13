@@ -20,6 +20,29 @@ await driver.SaveToFileAsync("graph.json");
 await using var again = await InMemoryGraphDriver.LoadFromFileAsync("graph.json");
 ```
 
+### Several app servers: a group lock per database
+
+`Graphiti` runs one write at a time per group through an `IGroupLock`. The default, `InProcessGroupLock.Shared`, holds
+only within one process. A host running several app servers against one database registers the lock that ships with
+its driver, built from the driver's connection string and options, on every server:
+
+| Driver | Lock | Mechanism |
+| --- | --- | --- |
+| PostgreSQL | `PostgresGroupLock` | `pg_advisory_lock` on an unpooled connection; see [postgresql.md](postgresql.md#several-app-servers-postgresgrouplock) |
+| SQL Server | `SqlServerGroupLock` | `sp_getapplock`, session owner, on an unpooled connection; see [sqlserver.md](sqlserver.md#several-app-servers-sqlservergrouplock) |
+
+```csharp
+var groupLock = new PostgresGroupLock(connectionString, options);   // or new SqlServerGroupLock(connectionString, options)
+await using var graphiti = new Graphiti(driver, llm, embedder, reranker, groupLock: groupLock);
+// or, with dependency injection:
+services.AddSingleton<IGroupLock>(_ => new PostgresGroupLock(connectionString, options));
+```
+
+Both release the lock when the operation ends, when its connection drops, and when a wait is cancelled. The
+in-memory driver lives in one process, so the default lock is enough for it. Any other distributed lock (Redis and so
+on) can implement `IGroupLock`; the tests in `tests/GraphitiNet.Driver.Tests/Conformance/DistributedGroupLockTests.cs`
+show what one must do.
+
 ## The contract
 
 The XML docs on `IGraphDriver` and its operations interfaces are the reference. The rules every driver follows, and the
