@@ -40,7 +40,7 @@ internal static class SchemaBuilder
 
             if (deleteExisting)
             {
-                var tables = string.Join(", ", SqlNames.AllTables.Append(SearchStatisticsSql.Table).Select(names.Table));
+                var tables = string.Join(", ", SqlNames.AllTables.Concat(SearchStatisticsSql.Tables).Select(names.Table));
                 await ExecuteAsync(connection, $"DROP TABLE IF EXISTS {tables} CASCADE", ct).ConfigureAwait(false);
             }
 

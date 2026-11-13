@@ -33,7 +33,7 @@ internal sealed class GraphMaintenanceOperations(DriverCore core) : IGraphMainte
                 {
                     DriverCore.AddCommand(
                         batch,
-                        "TRUNCATE " + string.Join(", ", SqlNames.AllTables.Append(SearchStatisticsSql.Table).Select(N.Table)));
+                        "TRUNCATE " + string.Join(", ", SqlNames.AllTables.Concat(SearchStatisticsSql.Tables).Select(N.Table)));
                 }
                 else
                 {

@@ -1,6 +1,7 @@
 // Copyright 2026, graphiti-net contributors
 // Licensed under the Apache License, Version 2.0. See LICENSE.
 
+using System.Globalization;
 using GraphitiNet.Driver.PostgreSql.Entities;
 using GraphitiNet.Models;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,7 @@ namespace GraphitiNet.Driver.PostgreSql.Internal;
 /// Shared plumbing for the operations classes: creating contexts, borrowing their pooled Npgsql connection, and the
 /// batched upsert and delete statements (EF Core has no upsert, and deletes cascade across tables).
 /// </summary>
-internal sealed class DriverCore(Func<DbContext> contextFactory, PostgresGraphOptions options)
+internal sealed partial class DriverCore(Func<DbContext> contextFactory, PostgresGraphOptions options)
 {
     private volatile bool _modelChecked;
     private volatile bool _searchStatisticsChecked;
@@ -92,7 +93,12 @@ internal sealed class DriverCore(Func<DbContext> contextFactory, PostgresGraphOp
 
     // ----- Upserts -----
 
-    /// <summary>Sends one <c>INSERT ... ON CONFLICT (uuid) DO UPDATE</c> per item, batched per round trip.</summary>
+    /// <summary>
+    /// Saves items with <c>INSERT ... ON CONFLICT (uuid) DO UPDATE</c>, <see cref="PostgresGraphOptions.BulkBatchSize"/>
+    /// rows per statement, so that statement-level triggers (the full-text statistics) run once per batch rather than
+    /// once per row. <paramref name="sql"/> is the statement for one row; its first parameter is the uuid. Of items
+    /// sharing a uuid, the last is saved, as saving them one after another would leave it.
+    /// </summary>
     public Task UpsertAsync<T>(
         NpgsqlConnection connection,
         IReadOnlyList<T> items,
@@ -109,20 +115,51 @@ internal sealed class DriverCore(Func<DbContext> contextFactory, PostgresGraphOp
         Func<T, int, NpgsqlParameter[]> parameters,
         CancellationToken ct)
     {
-        for (var start = 0; start < items.Count; start += Options.BulkBatchSize)
+        var rows = items.Select((item, i) => parameters(item, i)).ToList();
+        var last = new Dictionary<object, int>();
+        for (var i = 0; i < rows.Count; i++)
         {
-            await using var batch = new NpgsqlBatch(connection);
-            var end = Math.Min(items.Count, start + Options.BulkBatchSize);
-            for (var i = start; i < end; i++)
+            last[rows[i][0].Value!] = i;
+        }
+
+        rows = [.. rows.Where((row, i) => last[row[0].Value!] == i)];
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        // The single-row statement split around its VALUES list, whose $n placeholders are renumbered for each row.
+        const string Values = " VALUES (";
+        const string Conflict = ") ON CONFLICT";
+        var valuesAt = sql.IndexOf(Values, StringComparison.Ordinal);
+        var conflictAt = sql.IndexOf(Conflict, StringComparison.Ordinal);
+        var row = sql[(valuesAt + Values.Length)..conflictAt];
+        var width = rows[0].Length;
+        var perStatement = Math.Max(1, Math.Min(Options.BulkBatchSize, ushort.MaxValue / width));
+        for (var start = 0; start < rows.Count; start += perStatement)
+        {
+            var count = Math.Min(perStatement, rows.Count - start);
+            var text = new System.Text.StringBuilder(sql, 0, valuesAt, sql.Length * count).Append(" VALUES ");
+            await using var command = new NpgsqlCommand { Connection = connection };
+            for (var r = 0; r < count; r++)
             {
-                var command = new NpgsqlBatchCommand(sql);
-                command.Parameters.AddRange(parameters(items[i], i));
-                batch.BatchCommands.Add(command);
+                text.Append(r == 0 ? "(" : ", (").Append(Renumber(row, r * width)).Append(')');
+                command.Parameters.AddRange(rows[start + r]);
             }
 
-            await batch.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            command.CommandText = text.Append(sql, conflictAt + 1, sql.Length - conflictAt - 1).ToString();
+            await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
     }
+
+    private static string Renumber(string row, int offset) =>
+        offset == 0
+            ? row
+            : Placeholders().Replace(row, m => "$" + (int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture) + offset)
+                .ToString(CultureInfo.InvariantCulture));
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\$(\d+)")]
+    private static partial System.Text.RegularExpressions.Regex Placeholders();
 
     private string UpsertSql(string table, params string[] columns)
     {
@@ -375,19 +412,29 @@ internal sealed class DriverCore(Func<DbContext> contextFactory, PostgresGraphOp
             return;
         }
 
+        // The term counts table came with 0.2; a schema whose statistics script ran under 0.1 lacks it.
         await using var command = new NpgsqlCommand(
-            "SELECT count(*)::int FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
+            "SELECT count(*)::int, to_regclass($3) IS NOT NULL FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
             + "JOIN pg_namespace s ON s.oid = c.relnamespace WHERE s.nspname = $1 AND c.relname = ANY($2) "
             + "AND t.tgname LIKE 'graphiti_search_statistics_%'",
             connection);
         command.Parameters.Add(Params.Text(Options.Schema));
         command.Parameters.Add(Params.TextArray(SearchIndex.Columns.Keys.Select(Names.Name)));
-        var installed = (int)(await command.ExecuteScalarAsync(ct).ConfigureAwait(false))!;
-        if (installed < SearchStatisticsSql.TriggerCount)
+        command.Parameters.Add(Params.Text(Names.Table(SearchStatisticsSql.TermCountsTable)));
+        int installed;
+        bool counted;
+        await using (var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false))
+        {
+            await reader.ReadAsync(ct).ConfigureAwait(false);
+            installed = reader.GetInt32(0);
+            counted = reader.GetBoolean(1);
+        }
+
+        if (installed < SearchStatisticsSql.TriggerCount || !counted)
         {
             throw new InvalidOperationException(
-                "Full-text search needs graphiti-net's search statistics triggers, which are missing from schema "
-                + $"\"{Options.Schema}\". Call GraphOps.BuildIndicesAndConstraintsAsync(), or, if you manage the schema "
+                "Full-text search needs graphiti-net's search statistics tables and triggers, which are missing from schema "
+                + $"\"{Options.Schema}\" or date from an earlier version. Call GraphOps.BuildIndicesAndConstraintsAsync(), or, if you manage the schema "
                 + "with EF Core migrations, add migrationBuilder.Sql(GraphitiSchemaSql.SearchStatistics(options)) to a "
                 + "migration.");
         }
