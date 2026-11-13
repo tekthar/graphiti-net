@@ -162,12 +162,18 @@ public class OpenAIGenericClient : LLMClient
 
         messages[0].Content += GetExtractionLanguageInstruction(groupId);
 
+        // graphiti-net additions, as in LLMClient.GenerateResponseAsync: the prompt name in the call context, the
+        // operation's model call gate, and token usage per operation.
+        using var promptScope = GraphitiCallContext.BeginPrompt(promptName);
         using var activity = StartGenerateActivity(modelSize, resolvedMaxTokens, promptName);
+        await GraphitiCallContext.EnsureAllowedAsync(ModelCallKind.Llm, promptName, cancellationToken)
+            .ConfigureAwait(false);
         try
         {
             var response = await GenerateResponseWithRetryAsync(
                 messages, responseModel, resolvedMaxTokens, modelSize, model, cancellationToken).ConfigureAwait(false);
             TokenTracker.Record(promptName, response.InputTokens, response.OutputTokens);
+            GraphitiCallContext.Current?.Usage.Record(promptName, response.InputTokens, response.OutputTokens);
             return response.Response;
         }
         catch (Exception e)

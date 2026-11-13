@@ -54,6 +54,13 @@ All notable changes to graphiti-net are written here. The format follows
   Each LLM attempt rebuilds its prompt, tokens are counted once, and a model call gate is asked once per call. Off by
   default, so behaviour stays upstream's. `RateLimitException.RetryAfter` carries a provider's requested wait.
 
+### Fixed
+
+- `OpenAIClient` and `OpenAIGenericClient` now ask the model call gate before each LLM call, put the prompt name in
+  `GraphitiCallContext`, and record their tokens in the operation's usage (`AddEpisodeResults.TokenUsage`). In 0.1.0
+  they skipped all three, because they override `GenerateResponseAsync`; only clients on the base implementation,
+  such as `ChatClientLLMClient`, honoured them.
+
 ## [0.1.0] - 2026-11-13
 
 The first release. Ported from Python Graphiti
