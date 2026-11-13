@@ -79,7 +79,7 @@ public sealed class SqlServerDriverTests : IAsyncLifetime
     {
         await using var driver = new SqlServerDriver(TestDatabase.ConnectionString, Options);
 
-        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => driver.GraphOps.BuildIndicesAndConstraintsAsync()));
+        await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => driver.GraphOps.BuildIndicesAndConstraintsAsync()));
 
         await driver.EntityNodeOps.SaveAsync(Entity("Alice"));
         Assert.Single(await driver.EntityNodeOps.GetByGroupIdsAsync([Group]));

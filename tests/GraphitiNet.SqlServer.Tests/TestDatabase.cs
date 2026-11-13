@@ -28,8 +28,27 @@ internal static class TestDatabase
     /// <summary>A unique schema name for one test.</summary>
     public static string NewSchema() => "t_" + Guid.NewGuid().ToString("N")[..16];
 
-    /// <summary>Drops every table in a schema, then the schema.</summary>
+    /// <summary>
+    /// Drops every table in a schema, then the schema. Tests run in parallel, so this DDL can cross another test's
+    /// schema build and be chosen as the deadlock victim (error 1205); it is then retried.
+    /// </summary>
     public static async Task DropSchemaAsync(string schema)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await DropSchemaOnceAsync(schema);
+                return;
+            }
+            catch (SqlException e) when (e.Number == 1205 && attempt < 5)
+            {
+                await Task.Delay(100 * attempt);
+            }
+        }
+    }
+
+    private static async Task DropSchemaOnceAsync(string schema)
     {
         await using var connection = new SqlConnection(ConnectionString);
         await connection.OpenAsync();
