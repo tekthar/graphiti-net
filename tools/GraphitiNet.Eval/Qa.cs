@@ -38,6 +38,11 @@ internal static class Qa
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    private static readonly JsonSerializerOptions Compact = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
     private static LLMConfig LlmConfig()
     {
         var model = Environment.GetEnvironmentVariable("LLM_MODEL") ?? "gpt-5-mini";
@@ -84,9 +89,49 @@ internal static class Qa
         using var gate = new SemaphoreSlim(Concurrency());
         var started = Stopwatch.StartNew();
 
+        // Each finished question is appended to a checkpoint file, so a run stopped part way (quota, crash) resumes with
+        // the questions it has not answered yet.
+        var checkpoint = args[2] + ".partial.jsonl";
+        var done = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        if (File.Exists(checkpoint))
+        {
+            foreach (var line in await File.ReadAllLinesAsync(checkpoint))
+            {
+                if (line.Length > 0 && JsonNode.Parse(line) is JsonObject row)
+                {
+                    done[row["question_id"]!.GetValue<string>()] = row;
+                }
+            }
+
+            Console.WriteLine($"resuming: {done.Count} questions already answered");
+        }
+
+        using var checkpointLock = new SemaphoreSlim(1);
+
+        async Task<JsonObject> OneAsync(string id)
+        {
+            if (done.TryGetValue(id, out var finished))
+            {
+                return finished;
+            }
+
+            var answered = await AttemptsAsync(id);
+            await checkpointLock.WaitAsync();
+            try
+            {
+                await File.AppendAllTextAsync(checkpoint, answered.ToJsonString(Compact) + "\n");
+            }
+            finally
+            {
+                checkpointLock.Release();
+            }
+
+            return answered;
+        }
+
         // A transient provider error (rate limit, 502) fails the whole AddEpisodeAsync, as in Graphiti itself; retry the
         // question from scratch in a fresh group rather than lose the run.
-        async Task<JsonObject> OneAsync(string id)
+        async Task<JsonObject> AttemptsAsync(string id)
         {
             for (var attempt = 0; ; attempt++)
             {
@@ -189,6 +234,7 @@ internal static class Qa
             ["answers"] = new JsonArray([.. answers]),
         };
         await File.WriteAllTextAsync(args[2], output.ToJsonString(Indented));
+        File.Delete(checkpoint);
         Console.WriteLine(string.Create(
             CultureInfo.InvariantCulture, $"{answers.Length} questions in {started.Elapsed.TotalSeconds:F0}s -> {args[2]}"));
         return 0;

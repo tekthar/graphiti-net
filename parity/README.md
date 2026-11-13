@@ -115,6 +115,10 @@ python -I parity/python/lme_qa.py report *.graded.json
 `lme_qa.py answer` and `GraphitiNet.Eval qa-answer` answer again from a run's stored contexts, without ingesting or
 searching, as a control for the answering stage alone.
 
+Both `run` commands save each answered question to `<answers.json>.partial.jsonl` as they go. Running the same command
+again after a run stopped part way (out of quota, a crash) skips the questions already answered and continues with the
+rest. The file is removed when the run completes.
+
 ## Differential tests
 
 The dataset runs above check whole pipelines. The differential tests check single functions: they prove that a

@@ -140,7 +140,27 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
     config.limit = SEARCH_LIMIT
     gate = asyncio.Semaphore(int(os.environ.get('QA_CONCURRENCY', '8')))
 
+    # Each finished question is appended to a checkpoint file, so a run stopped part way (quota, crash) resumes with
+    # the questions it has not answered yet.
+    checkpoint = out_path + '.partial.jsonl'
+    done: dict[str, dict] = {}
+    if os.path.exists(checkpoint):
+        with open(checkpoint, encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    row = json.loads(line)
+                    done[row['question_id']] = row
+        print(f'resuming: {len(done)} questions already answered', flush=True)
+
     async def one(item: dict) -> dict:
+        if item['question_id'] in done:
+            return done[item['question_id']]
+        answered = await one_attempts(item)
+        with open(checkpoint, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(answered, ensure_ascii=False) + '\n')
+        return answered
+
+    async def one_attempts(item: dict) -> dict:
         # A transient provider error (rate limit, 502) fails the whole add_episode, as in Graphiti itself; retry the
         # question from scratch in a fresh group rather than lose the run.
         for attempt in range(MAX_ATTEMPTS):
@@ -209,6 +229,7 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
     finally:
         await driver.close()
     write(out_path, {'implementation': 'graphiti 0.31.2 (Neo4j)', 'label': label, 'answers': answers})
+    os.remove(checkpoint)
     print(f'{len(answers)} questions in {time.perf_counter() - started:.0f}s -> {out_path}')
 
 
