@@ -110,7 +110,9 @@ public sealed class PostgresDriver : IGraphDriver
     /// <inheritdoc />
     /// <remarks><see cref="IGraphMaintenanceOperations.BuildIndicesAndConstraintsAsync"/> creates the
     /// <c>vector</c> extension, the schema, and any missing tables with their indexes, from the EF Core model; with
-    /// <c>deleteExisting</c> it drops the tables first (all data is lost).</remarks>
+    /// <c>deleteExisting</c> it drops the tables first (all data is lost). <see cref="GraphitiSchema.Tables"/> lists
+    /// the tables. It throws <see cref="VectorStoreUnavailableException"/> when pgvector is not installed on the
+    /// server, or the extension does not exist in the database and the role may not create it.</remarks>
     public IGraphMaintenanceOperations GraphOps { get; }
 
     /// <inheritdoc />
@@ -136,6 +138,19 @@ public sealed class PostgresDriver : IGraphDriver
             },
             cancellationToken);
     }
+
+    /// <summary>
+    /// Checks, without creating anything, whether the database can hold the embedding vectors: the pgvector extension
+    /// (<c>vector</c>) already exists in it, or is installed on the server and the connecting role may create it (a
+    /// superuser). Run it before <see cref="IGraphMaintenanceOperations.BuildIndicesAndConstraintsAsync"/>, which
+    /// otherwise throws <see cref="VectorStoreUnavailableException"/> with what is missing and how to fix it.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the check.</param>
+    /// <returns><see langword="true"/> when the database can hold vectors.</returns>
+    public Task<bool> CanHoldVectorsAsync(CancellationToken cancellationToken = default) =>
+        _core.WithConnectionAsync(
+            connection => VectorSupport.CanHoldVectorsAsync(connection, cancellationToken),
+            cancellationToken);
 
     /// <summary>Nothing to release: connections return to Npgsql's pool after each operation.</summary>
     /// <returns>A completed task.</returns>

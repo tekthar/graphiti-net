@@ -36,11 +36,23 @@ internal static class SchemaBuilder
             // One lock for every schema: CREATE EXTENSION itself is not safe to run concurrently.
             await ExecuteAsync(connection, "SELECT pg_advisory_xact_lock(hashtext('graphiti-net schema'))", ct)
                 .ConfigureAwait(false);
-            await ExecuteAsync(connection, "CREATE EXTENSION IF NOT EXISTS vector", ct).ConfigureAwait(false);
+            try
+            {
+                await ExecuteAsync(connection, VectorSupport.CreateExtensionSql, ct).ConfigureAwait(false);
+            }
+            catch (PostgresException e) when (VectorSupport.Unavailable(connection, e) is { } unavailable)
+            {
+                throw unavailable;
+            }
 
+            // The graph tables of the model: what GraphitiSchema.Tables lists, so the two cannot drift apart.
+            var ours = GraphitiSchema.ModelTables(model, schema).Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
             if (deleteExisting)
             {
-                var tables = string.Join(", ", SqlNames.AllTables.Append(SearchStatisticsSql.Table).Select(names.Table));
+                var tables = string.Join(
+                    ", ",
+                    ours.Append(names.Name(SearchStatisticsSql.Table))
+                        .Select(t => $"{names.QuotedSchema}.{SqlNames.Quote(t)}"));
                 await ExecuteAsync(connection, $"DROP TABLE IF EXISTS {tables} CASCADE", ct).ConfigureAwait(false);
             }
 
@@ -63,7 +75,6 @@ internal static class SchemaBuilder
                     await DriverCore.ReadListAsync(command, r => r.GetString(0), ct).ConfigureAwait(false));
             }
 
-            var ours = SqlNames.AllTables.Select(names.Name).ToHashSet(StringComparer.Ordinal);
             var created = new HashSet<string>(StringComparer.Ordinal);
             var selected = new List<MigrationOperation>();
             foreach (var operation in operations)

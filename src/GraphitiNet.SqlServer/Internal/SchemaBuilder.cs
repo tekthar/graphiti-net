@@ -68,7 +68,6 @@ internal static class SchemaBuilder
         var operations = context.GetService<IMigrationsModelDiffer>().GetDifferences(null, model.GetRelationalModel());
         var sqlGenerator = context.GetService<IMigrationsSqlGenerator>();
         var schema = core.Options.Schema;
-        var names = core.Names;
 
         await context.Database.OpenConnectionAsync(ct).ConfigureAwait(false);
         try
@@ -97,11 +96,17 @@ internal static class SchemaBuilder
                     $"graphiti-net could not take the schema lock: sp_getapplock returned {lockResult}.");
             }
 
+            await VectorSupport.EnsureVectorTypeAsync(db, ct).ConfigureAwait(false);
+
+            // The graph and keyword index tables of the model: what GraphitiSchema.Tables lists, so the two cannot
+            // drift apart.
+            var ours = GraphitiSchema.ModelTables(model, schema).Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
             if (deleteExisting)
             {
-                foreach (var table in SqlNames.AllTables)
+                foreach (var table in ours)
                 {
-                    await ExecuteAsync(db, $"DROP TABLE IF EXISTS {names.Table(table)}", ct).ConfigureAwait(false);
+                    await ExecuteAsync(db, $"DROP TABLE IF EXISTS {SqlNames.Quote(schema)}.{SqlNames.Quote(table)}", ct)
+                        .ConfigureAwait(false);
                 }
             }
 
@@ -117,7 +122,6 @@ internal static class SchemaBuilder
                 schema,
                 ct).ConfigureAwait(false);
 
-            var ours = SqlNames.AllTables.Select(names.Name).ToHashSet(StringComparer.Ordinal);
             var created = new HashSet<string>(StringComparer.Ordinal);
             var selected = new List<MigrationOperation>();
             foreach (var operation in operations)

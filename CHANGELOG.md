@@ -18,6 +18,18 @@ All notable changes to graphiti-net are written here. The format follows
   its rank, for hosts with no reranking model. With it the fact and episode cross-encoder rerankers give the RRF
   order. The default is still `OpenAIRerankerClient`.
 - The acceptance tests also run on SQL Server.
+- **`VectorStoreUnavailableException`** (`GraphitiNet.Driver`): `BuildIndicesAndConstraintsAsync` throws it, with the
+  database's own exception inside, when the database cannot hold embedding vectors: PostgreSQL without pgvector
+  installed, or where the role may not run `CREATE EXTENSION vector`, and SQL Server before 2025, which has no
+  `vector` type. The message names the database, what is missing and the fix (install pgvector, have a superuser run
+  `CREATE EXTENSION vector`, or use SQL Server 2025 / Azure SQL), so a host can show it to its administrator; `Reason`
+  says which case it is. `PostgresDriver.CanHoldVectorsAsync` and `SqlServerDriver.CanHoldVectorsAsync` check the
+  same before setup without creating anything (tekthar/graphiti-net#8).
+- **`GraphitiSchema.Tables(options)`** in `GraphitiNet.PostgreSql` and `GraphitiNet.SqlServer`: the tables the driver
+  creates for a schema name and table prefix, without a database, each with its qualified name and the record type it
+  holds; it includes PostgreSQL's `search_statistics` and SQL Server's keyword index tables (`search_terms`,
+  `search_fields`). It reads the same EF Core model `BuildIndicesAndConstraintsAsync` builds from, and a test on each
+  driver checks it against the tables the build creates (tekthar/graphiti-net#11).
 
 ## [0.1.0] - 2026-11-13
 
