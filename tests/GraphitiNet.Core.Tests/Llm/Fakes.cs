@@ -19,7 +19,8 @@ internal sealed record RecordedRequest(HttpMethod Method, Uri Uri, JsonObject? B
 /// <summary>An HTTP handler that records requests and answers from a queue, so no network is used.</summary>
 internal sealed class FakeHttpHandler : HttpMessageHandler
 {
-    private readonly Queue<(HttpStatusCode Status, string Body)> _responses = new();
+    private readonly Queue<(HttpStatusCode Status, string Body, IReadOnlyDictionary<string, string>? Headers)> _responses =
+        new();
     private readonly Lock _lock = new();
 
     public List<RecordedRequest> Requests { get; } = [];
@@ -27,9 +28,12 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
     /// <summary>Answer used when the queue is empty.</summary>
     public (HttpStatusCode Status, string Body)? Fallback { get; set; }
 
-    public FakeHttpHandler Enqueue(string body, HttpStatusCode status = HttpStatusCode.OK)
+    public FakeHttpHandler Enqueue(
+        string body,
+        HttpStatusCode status = HttpStatusCode.OK,
+        IReadOnlyDictionary<string, string>? headers = null)
     {
-        _responses.Enqueue((status, body));
+        _responses.Enqueue((status, body, headers));
         return this;
     }
 
@@ -37,20 +41,28 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var text = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-        (HttpStatusCode Status, string Body) response;
+        (HttpStatusCode Status, string Body, IReadOnlyDictionary<string, string>? Headers) response;
         lock (_lock)
         {
             Requests.Add(new RecordedRequest(request.Method, request.RequestUri!,
                 string.IsNullOrEmpty(text) ? null : JsonNode.Parse(text) as JsonObject));
             response = _responses.Count > 0
                 ? _responses.Dequeue()
-                : Fallback ?? throw new InvalidOperationException("No fake response queued.");
+                : Fallback is { } fallback
+                    ? (fallback.Status, fallback.Body, null)
+                    : throw new InvalidOperationException("No fake response queued.");
         }
 
-        return new HttpResponseMessage(response.Status)
+        var message = new HttpResponseMessage(response.Status)
         {
             Content = new StringContent(response.Body, Encoding.UTF8, "application/json"),
         };
+        foreach (var (name, value) in response.Headers ?? new Dictionary<string, string>())
+        {
+            message.Headers.TryAddWithoutValidation(name, value);
+        }
+
+        return message;
     }
 }
 

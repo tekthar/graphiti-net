@@ -50,6 +50,11 @@ public sealed record GraphitiClients
     /// <summary>Where the pipeline functions log (upstream's module loggers). Defaults to no logging.</summary>
     public ILogger Logger { get; init; } = NullLogger.Instance;
 
+    /// <summary>The retry policy around each prompt <see cref="CompletePromptAsync"/> runs, or
+    /// <see langword="null"/> for none (upstream's behaviour). A graphiti-net addition; see
+    /// <see cref="ModelCallRetryOptions"/>.</summary>
+    public ModelCallRetryOptions? ModelCallRetry { get; init; }
+
     /// <summary>The LLM client a prompt runs on.</summary>
     public LLMClient ClientFor(string promptName) =>
         PromptRoutes is not null && PromptRoutes.TryGetValue(promptName, out var routed) ? routed : LlmClient;
@@ -78,20 +83,36 @@ public sealed record GraphitiClients
         CancellationToken cancellationToken = default)
     {
         var resolved = PromptLibrary.ResolveResponseModel(promptName, responseModel);
-        var messages = PromptLibrary.Build(promptName, context).AsMessages().ToList();
+        if (ModelCallRetry is not { } retry)
+        {
+            return await CompleteOnceAsync(cancellationToken).ConfigureAwait(false);
+        }
 
-        // graphiti-net addition: the prompt name is visible in GraphitiCallContext.Current during the call, also to
-        // LLM clients that override GenerateResponseAsync.
-        using var promptScope = GraphitiCallContext.BeginPrompt(promptName);
-        return await ClientFor(promptName).GenerateResponseAsync(
-            messages,
-            resolved,
-            maxTokens,
-            modelSize,
-            groupId,
-            promptName,
-            attributeExtraction,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+        // graphiti-net addition: retry transient errors. The gate is asked once per logical call, not per attempt.
+        var current = GraphitiCallContext.Current;
+        using var gateScope = current?.ModelCallGate is { } gate
+            ? GraphitiCallContext.Begin(current with { ModelCallGate = new AllowOnceGate(gate) })
+            : null;
+        return await retry.ExecuteAsync(CompleteOnceAsync, "llm", Logger, cancellationToken).ConfigureAwait(false);
+
+        // Each attempt builds the messages afresh: clients append to them in place.
+        async Task<JsonElement> CompleteOnceAsync(CancellationToken ct)
+        {
+            var messages = PromptLibrary.Build(promptName, context).AsMessages().ToList();
+
+            // graphiti-net addition: the prompt name is visible in GraphitiCallContext.Current during the call, also
+            // to LLM clients that override GenerateResponseAsync.
+            using var promptScope = GraphitiCallContext.BeginPrompt(promptName);
+            return await ClientFor(promptName).GenerateResponseAsync(
+                messages,
+                resolved,
+                maxTokens,
+                modelSize,
+                groupId,
+                promptName,
+                attributeExtraction,
+                cancellationToken: ct).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Like <see cref="CompletePromptAsync"/>, deserialising the response into

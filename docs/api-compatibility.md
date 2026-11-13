@@ -46,6 +46,7 @@ graphiti-net has no graph database. **Neo4j, FalkorDB, Amazon Neptune and Kuzu a
 | (none) | `IGroupLock? groupLock = null` | graphiti-net addition, see below |
 | (none) | `IModelCallGate? modelCallGate = null` | graphiti-net addition, see below |
 | (none) | `ILogger? logger = null` | upstream logs through `logging` |
+| (none) | `ModelCallRetryOptions? modelCallRetry = null` | graphiti-net addition: retries transient provider errors, see below |
 
 ### Properties
 
@@ -382,6 +383,33 @@ both callers (`NoGroupLock`, or several servers with the in-process lock) both m
 distributed `IGroupLock` there. Without a key, behaviour is upstream's. Existing PostgreSQL and SQL Server databases
 get the new column and index from `BuildIndicesAndConstraintsAsync`; EF Core migration users add a migration (see
 [postgresql.md](postgresql.md#upgrading-from-010) and [sqlserver.md](sqlserver.md#upgrading-from-010)).
+
+### Retrying transient provider errors (`ModelCallRetryOptions`)
+
+In upstream a rate limit (HTTP 429), a 5xx or a timeout that outlasts the client's own retries fails the whole
+`add_episode`. `new Graphiti(..., modelCallRetry: new ModelCallRetryOptions())` retries each LLM prompt, embedding and
+rerank call a `Graphiti` operation makes, with exponential backoff and jitter. Off by default, so behaviour stays
+upstream's.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `MaxAttempts` | 4 | attempts per call, including the first |
+| `BaseDelay` | 1 s | backoff before the second attempt, doubling after; each wait is drawn between half the backoff and all of it |
+| `MaxDelay` | 60 s | the longest wait, also for a `Retry-After` |
+| `RespectRetryAfter` | `true` | wait as long as the provider asks (`Retry-After` or `retry-after-ms` header of a `ClientResultException`, or `RateLimitException.RetryAfter`), capped at `MaxDelay` |
+| `ShouldRetry` | `ModelCallRetryOptions.IsTransient` | which errors are retried: `RateLimitException`, HTTP 408, 429 and 5xx, connection failures, timeouts (inner exceptions too); not malformed or empty answers, refusals or a refused gate |
+| `TimeProvider` | system clock | for tests |
+
+- Each LLM attempt rebuilds the prompt, so nothing a failed attempt appended (such as `BaseOpenAIClient`'s
+  "previous response attempt was invalid" re-prompt, which only handles invalid answers and never sees a 429) carries
+  over.
+- Token usage is recorded once, by the attempt that succeeds.
+- A model call gate is asked once per logical call; retries of an allowed call are not asked again, and a refusal is
+  never retried.
+- Cancellation stops the wait between attempts; a cancelled call is not retried.
+- The policy sits above the clients' own retries, which stay as upstream's: the base `LLMClient`
+  (`ChatClientLLMClient`, `OpenAIGenericClient`) retries rate limits and 5xx errors itself, 4 attempts 5 to 120
+  seconds apart, and the OpenAI SDK retries 429 and 5xx responses. Attempts multiply; lower one layer if needed.
 
 ### Strict episode removal and clearing a group
 

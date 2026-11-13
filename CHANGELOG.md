@@ -19,6 +19,11 @@ All notable changes to graphiti-net are written here. The format follows
   unique index `ux_episodes_group_id_idempotency_key` on (`group_id`, `idempotency_key`).
   `BuildIndicesAndConstraintsAsync` adds both to a 0.1.0 database (it now adds any column a newer version added to an
   existing table); hosts on EF Core migrations add a migration, see docs/postgresql.md and docs/sqlserver.md.
+- **Opt-in retry of transient provider errors**: `new Graphiti(..., modelCallRetry: new ModelCallRetryOptions())`
+  retries each LLM prompt, embedding and rerank call on a rate limit (HTTP 429), a 5xx, a timeout or a dropped
+  connection, with exponential backoff and jitter (`MaxAttempts`, `BaseDelay`, `MaxDelay`), honouring `Retry-After`.
+  Each LLM attempt rebuilds its prompt, tokens are counted once, and a model call gate is asked once per call. Off by
+  default, so behaviour stays upstream's. `RateLimitException.RetryAfter` carries a provider's requested wait.
 
 ## [0.1.0] - 2026-11-13
 
