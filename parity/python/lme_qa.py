@@ -7,9 +7,9 @@ tests/evals/eval_e2e_graph_building.py: episode body "role: content", reference 
 message, one group per question), search the question's group, answer with upstream's eval.qa_prompt from the search
 results only, and grade the answer against the gold answer with upstream's eval.eval_prompt (an LLM judge).
 
-  select <longmemeval_oracle.json> <questions.json> [per_type] [seed]
+  select <longmemeval_oracle.json> <questions.json> [per_type] [seed] [pool]
       Picks per_type questions (default 4) of each question type, at random with a fixed seed (default 42), among
-      the 12 with the fewest haystack messages. Abstention questions (ids ending in _abs) are left out.
+      the pool (default 12) with the fewest haystack messages. Abstention questions (ids ending in _abs) are left out.
   run    <longmemeval_oracle.json> <questions.json> <answers.json> [label]
       Python Graphiti v0.31.2 on Neo4j: ingest, search, answer. tools/GraphitiNet.Eval `qa` writes the same file
       shape for graphiti-net.
@@ -81,7 +81,7 @@ def qa_context(query: str, facts: list[dict], entities: list[dict]) -> dict:
     return {'query': query, 'entity_summaries': entities, 'facts': facts}
 
 
-def select(dataset_path: str, out_path: str, per_type: int = 4, seed: int = 42) -> None:
+def select(dataset_path: str, out_path: str, per_type: int = 4, seed: int = 42, pool: int = 12) -> None:
     with open(dataset_path, encoding='utf-8') as f:
         data = json.load(f)
     by_type = defaultdict(list)
@@ -93,8 +93,9 @@ def select(dataset_path: str, out_path: str, per_type: int = 4, seed: int = 42) 
     rng = random.Random(seed)
     selected = []
     for question_type in sorted(by_type):
-        smallest = sorted(by_type[question_type])[:12]
-        selected += [qid for _, qid in sorted(rng.sample(smallest, per_type), key=lambda p: p[1])]
+        smallest = sorted(by_type[question_type])[:pool]
+        count = min(per_type, len(smallest))
+        selected += [qid for _, qid in sorted(rng.sample(smallest, count), key=lambda p: p[1])]
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(selected, f, indent=2)
     print(f'{len(selected)} questions -> {out_path}')
