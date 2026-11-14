@@ -27,6 +27,12 @@ internal abstract class InMemoryRecordOperations<T>(InMemoryStore store) : IReco
 
     protected abstract Exception NotFound(string uuid);
 
+    /// <summary>Checks constraints across records before <paramref name="stored"/> are written. Called with the lock
+    /// held.</summary>
+    protected virtual void CheckBeforeSave(IReadOnlyList<T> stored)
+    {
+    }
+
     /// <summary>Removes one record (and, for nodes, the edges that touch it). Called with the lock held.</summary>
     protected virtual void Remove(string uuid) => Items.Remove(uuid);
 
@@ -37,6 +43,7 @@ internal abstract class InMemoryRecordOperations<T>(InMemoryStore store) : IReco
         var stored = ToStored(item);
         lock (Store.Gate)
         {
+            CheckBeforeSave([stored]);
             Items[UuidOf(stored)] = stored;
         }
 
@@ -50,6 +57,7 @@ internal abstract class InMemoryRecordOperations<T>(InMemoryStore store) : IReco
         var stored = items.Select(ToStored).ToList();
         lock (Store.Gate)
         {
+            CheckBeforeSave(stored);
             foreach (var item in stored)
             {
                 Items[UuidOf(item)] = item;
@@ -193,6 +201,42 @@ internal sealed class InMemoryEpisodeNodeOperations(InMemoryStore store)
     protected override EpisodicNode ToStored(EpisodicNode item) => RecordCopies.Copy(item);
 
     protected override EpisodicNode ToResult(EpisodicNode stored) => RecordCopies.Copy(stored);
+
+    protected override void CheckBeforeSave(IReadOnlyList<EpisodicNode> stored) => Store.CheckIdempotencyKeys(stored);
+
+    public Task<EpisodicNode?> GetByIdempotencyKeyAsync(
+        string groupId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(groupId);
+        ArgumentNullException.ThrowIfNull(idempotencyKey);
+        return Read(
+            () => Store.EpisodeByIdempotencyKey(groupId, idempotencyKey) is { } found ? RecordCopies.Copy(found) : null,
+            cancellationToken);
+    }
+
+    public Task<EpisodicNode> AddOrGetByIdempotencyKeyAsync(
+        EpisodicNode episode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(episode);
+        var key = episode.IdempotencyKey
+                  ?? throw new ArgumentException("The episode has no idempotency key.", nameof(episode));
+        cancellationToken.ThrowIfCancellationRequested();
+        var stored = RecordCopies.Copy(episode);
+        lock (Store.Gate)
+        {
+            if (Store.EpisodeByIdempotencyKey(episode.GroupId, key) is { } existing)
+            {
+                return Task.FromResult(RecordCopies.Copy(existing));
+            }
+
+            Store.CheckIdempotencyKeys([stored]);
+            Store.Episodes[stored.Uuid] = stored;
+            return Task.FromResult(RecordCopies.Copy(stored));
+        }
+    }
 
     public Task<IReadOnlyList<EpisodicNode>> GetByEntityNodeUuidAsync(
         string entityNodeUuid,

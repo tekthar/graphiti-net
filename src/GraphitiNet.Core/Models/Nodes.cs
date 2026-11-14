@@ -105,6 +105,14 @@ public sealed class EpisodicNode : Node
 
     /// <summary>Caller-defined key-value pairs for filtering.</summary>
     public IDictionary<string, object?>? EpisodeMetadata { get; init; }
+
+    /// <summary>
+    /// The host's idempotency key for the call that created the episode, unique within <see cref="Node.GroupId"/>,
+    /// or <see langword="null"/>. A call to <c>Graphiti.AddEpisodeAsync</c> or <c>AddEpisodeBulkAsync</c> that
+    /// carries a key already stored in the group resumes that episode instead of creating another. A graphiti-net
+    /// addition (tekthar/graphiti-net#9); upstream has no such field.
+    /// </summary>
+    public string? IdempotencyKey { get; init; }
 }
 
 /// <summary>An entity: a person, product, policy, concept and so on.</summary>

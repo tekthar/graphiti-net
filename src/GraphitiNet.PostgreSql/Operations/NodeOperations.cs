@@ -21,6 +21,49 @@ internal sealed class EpisodeNodeOperations(DriverCore core)
     public override Task UpsertAsync(NpgsqlConnection connection, IReadOnlyList<EpisodicNode> items, CancellationToken ct) =>
         Core.UpsertEpisodesAsync(connection, items, ct);
 
+    public async Task<EpisodicNode?> GetByIdempotencyKeyAsync(
+        string groupId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(groupId);
+        ArgumentNullException.ThrowIfNull(idempotencyKey);
+        var found = await ListAsync(
+            q => q.Where(e => e.GroupId == groupId && e.IdempotencyKey == idempotencyKey).Take(1),
+            cancellationToken).ConfigureAwait(false);
+        return found.Count == 0 ? null : found[0];
+    }
+
+    /// <summary>Inserts the episode; when the unique index on (group, key) refuses it, a concurrent or earlier
+    /// writer holds the key, and its episode is returned.</summary>
+    public async Task<EpisodicNode> AddOrGetByIdempotencyKeyAsync(
+        EpisodicNode episode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(episode);
+        var key = episode.IdempotencyKey
+                  ?? throw new ArgumentException("The episode has no idempotency key.", nameof(episode));
+        if (await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false) is { } found)
+        {
+            return found;
+        }
+
+        try
+        {
+            await SaveAsync(episode, cancellationToken).ConfigureAwait(false);
+        }
+        catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UniqueViolation
+                                          && e.ConstraintName?.StartsWith("ux_", StringComparison.Ordinal) == true)
+        {
+            return await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false)
+                   ?? throw new InvalidOperationException(
+                       $"The idempotency key '{key}' was taken in group '{episode.GroupId}', then released.", e);
+        }
+
+        return await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false)
+               ?? episode;
+    }
+
     public Task<IReadOnlyList<EpisodicNode>> GetByEntityNodeUuidAsync(
         string entityNodeUuid,
         CancellationToken cancellationToken = default)

@@ -350,6 +350,7 @@ public abstract partial class GraphDriverConformanceTests : IAsyncLifetime
         AssertUtc(expected.ValidAt, actual.ValidAt);
         Assert.Equal(expected.EntityEdges, actual.EntityEdges);
         AssertJsonEqual(expected.EpisodeMetadata, actual.EpisodeMetadata);
+        Assert.Equal(expected.IdempotencyKey, actual.IdempotencyKey);
     }
 
     protected static void AssertCommunity(CommunityNode expected, CommunityNode actual)

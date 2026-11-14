@@ -55,6 +55,9 @@ var facts = await graphiti.SearchAsync("Where does Alice live?", groupIds: ["ten
 The tables can also live in your own `DbContext` (`modelBuilder.AddGraphiti(options)`) and your own EF Core
 migrations, with a schema name and table prefix of your choice.
 
+Running several app servers against one database? Pass `groupLock: new SqlServerGroupLock(connectionString, options)` to
+every `Graphiti` instance so they ingest into a group one at a time across servers.
+
 ## Learn more
 
 - [SQL Server storage guide](https://github.com/tekthar/graphiti-net/blob/main/docs/sqlserver.md): hosting the

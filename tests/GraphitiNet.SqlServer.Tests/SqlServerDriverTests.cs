@@ -75,6 +75,52 @@ public sealed class SqlServerDriverTests : IAsyncLifetime
     }
 
     [SqlServerFact]
+    public async Task Build_adds_the_idempotency_key_column_and_index_to_a_0_1_0_episodes_table()
+    {
+        await using var driver = new SqlServerDriver(TestDatabase.ConnectionString, Options);
+        await driver.GraphOps.BuildIndicesAndConstraintsAsync();
+        var old = Episode("stored before the upgrade");
+        await driver.EpisodeNodeOps.SaveAsync(old);
+
+        // The episodes table as graphiti-net 0.1.0 created it.
+        await TestDatabase.ExecuteAsync(
+            $"DROP INDEX [ux_episodes_group_id_idempotency_key] ON [{_schema}].[episodes]; "
+            + $"ALTER TABLE [{_schema}].[episodes] DROP COLUMN [idempotency_key]");
+
+        // A fresh driver, as after the application upgrade; building twice changes nothing more.
+        await using var upgraded = new SqlServerDriver(TestDatabase.ConnectionString, Options);
+        await upgraded.GraphOps.BuildIndicesAndConstraintsAsync();
+        await upgraded.GraphOps.BuildIndicesAndConstraintsAsync();
+
+        Assert.Equal(1, await TestDatabase.ScalarAsync<int>(
+            "SELECT COUNT(*) FROM sys.columns WHERE name = 'idempotency_key' AND object_id = OBJECT_ID(@table)",
+            ("@table", $"[{_schema}].[episodes]")));
+        Assert.Equal(1, await TestDatabase.ScalarAsync<int>(
+            "SELECT COUNT(*) FROM sys.indexes WHERE name = 'ux_episodes_group_id_idempotency_key' "
+            + "AND is_unique = 1 AND has_filter = 1 AND object_id = OBJECT_ID(@table)",
+            ("@table", $"[{_schema}].[episodes]")));
+        Assert.Null((await upgraded.EpisodeNodeOps.GetByUuidAsync(old.Uuid)).IdempotencyKey);
+
+        // Episodes without a key do not collide in the filtered unique index; keyed ones do.
+        await upgraded.EpisodeNodeOps.SaveAsync(Episode("another without a key"));
+        var stored = await upgraded.EpisodeNodeOps.AddOrGetByIdempotencyKeyAsync(Keyed(Episode("keyed"), "k"));
+        Assert.Equal("k", (await upgraded.EpisodeNodeOps.GetByIdempotencyKeyAsync(Group, "k"))!.IdempotencyKey);
+        Assert.Equal(stored.Uuid, (await upgraded.EpisodeNodeOps.AddOrGetByIdempotencyKeyAsync(Keyed(Episode(), "k"))).Uuid);
+    }
+
+    private static EpisodicNode Keyed(EpisodicNode episode, string key) => new()
+    {
+        Name = episode.Name,
+        GroupId = episode.GroupId,
+        Source = episode.Source,
+        SourceDescription = episode.SourceDescription,
+        Content = episode.Content,
+        ValidAt = episode.ValidAt,
+        CreatedAt = episode.CreatedAt,
+        IdempotencyKey = key,
+    };
+
+    [SqlServerFact]
     public async Task Concurrent_builds_do_not_race()
     {
         await using var driver = new SqlServerDriver(TestDatabase.ConnectionString, Options);

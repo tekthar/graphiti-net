@@ -387,7 +387,8 @@ internal sealed class DriverCore(Func<DbContext> contextFactory, SqlServerGraphO
             SqlNames.Episodes,
             items,
             [.. NodeColumns, Column.Text("source"), Column.Text("source_description"), Column.Text("content"),
-                Column.Time("valid_at"), Column.Json("entity_edges"), Column.Json("episode_metadata")],
+                Column.Time("valid_at"), Column.Json("entity_edges"), Column.Json("episode_metadata"),
+                Column.Text("idempotency_key")],
             n => n.Uuid,
             n => n.GroupId,
             (w, n) =>
@@ -399,6 +400,7 @@ internal sealed class DriverCore(Func<DbContext> contextFactory, SqlServerGraphO
                 w.WriteString("valid_at", n.ValidAt.ToUniversalTime());
                 WriteStrings(w, "entity_edges", n.EntityEdges);
                 WriteRawJson(w, "episode_metadata", JsonValues.SerializeNullable(n.EpisodeMetadata));
+                w.WriteString("idempotency_key", n.IdempotencyKey);
             },
             n => [n.Content, n.Source.ToStorageName(), n.SourceDescription],
             ct);

@@ -14,10 +14,11 @@ The tests are in [tests/GraphitiNet.Acceptance.Tests](../tests/GraphitiNet.Accep
   the prompt. The library's own extraction, entity and fact deduplication, contradiction handling, temporal
   invalidation and summary code runs on those answers. The embedder (`WordHashEmbedder`) is a deterministic
   bag-of-words hash;
-- runs twice, on `InMemoryGraphDriver` and on `PostgresDriver` (a theory over both drivers). The PostgreSQL case
-  uses its own schema, dropped afterwards. It is skipped when PostgreSQL can't be reached (`GRAPHITI_TEST_POSTGRES`,
-  or `Host=localhost;Username=postgres;Password=postgres;Database=graphiti_pg_tests`). CI runs a pgvector service, so
-  both cases run there.
+- runs on `InMemoryGraphDriver`, `PostgresDriver` and `SqlServerDriver` (a theory over the drivers). The database
+  cases use their own schema, dropped afterwards. Each is skipped when its server can't be reached: PostgreSQL at
+  `GRAPHITI_TEST_POSTGRES` (or `Host=localhost;Username=postgres;Password=postgres;Database=graphiti_pg_tests`), SQL
+  Server at `GRAPHITI_TEST_SQLSERVER` (or the `sa` login of a local SQL Server 2025 container, database
+  `graphiti_acceptance_tests`, as in [sqlserver.md](sqlserver.md)). CI runs both servers, so every case runs there.
 
 Run them with `dotnet test tests/GraphitiNet.Acceptance.Tests`.
 
@@ -109,3 +110,34 @@ How the tests check these:
   - both facts belong to one Alice entity.
 - **Customer-support on PostgreSQL.** `ParityRunTests.Ingestion_on_postgresql_matches_upstream_on_recorded_answers("customer-support")`
   passes since the PostgreSQL driver ranks keyword search with BM25, as upstream's Lucene does.
+
+## #10: reads that apply the episode access filter
+
+| Criterion | Test | In memory | PostgreSQL | SQL Server |
+| --- | --- | --- | --- | --- |
+| Records from a hidden episode are left out of the reads. | `Issue10Tests.Reads_leave_out_records_from_a_hidden_episode` | pass | pass | pass |
+| Paging is stable. | `Issue10Tests.Paging_is_stable_under_filtering_and_writes_between_pages` | pass | pass | pass |
+| Search and these reads agree on what one user can see. | `Issue10Tests.Search_and_reads_agree_on_what_one_user_can_see` | pass | pass | pass |
+| With no filter, the reads return what the namespace methods return. | `Issue10Tests.Without_a_filter_reads_return_what_the_namespace_methods_return` | pass | pass | pass |
+
+- **Hidden records.** Five episodes in one group; the filter hides two. The group graph, read two entities a page,
+  holds the five entities only readable episodes mention and the three facts from readable episodes. Alice, whom a
+  hidden episode also mentions, is left out, but her readable fact is in her edges (`GetFactsByNodeUuidAsync`). The
+  episodes, read one a page, are the three readable ones, and no page before the last is short.
+- **Paging.** With a page of one, every page but the last holds one entity, the entities come in descending id order,
+  and no fact repeats. An episode added after the first page of two neither repeats nor drops an entity that was
+  there before.
+- **Agreement.** For every entity, fact and episode an unfiltered search finds, the filtered search returns it if and
+  only if the reads do.
+
+## #6: a cross-encoder that keeps the given order
+
+| Criterion | Test | In memory | PostgreSQL | SQL Server |
+| --- | --- | --- | --- | --- |
+| The order is kept and the scores fall with rank. | `GraphitiNet.Core.Tests`: `PassThroughCrossEncoderClientTests.Keeps_the_given_order_and_scores_fall_with_rank` | pass | n/a | n/a |
+| A search with the cross-encoder reranker gives the same order as with RRF alone. | `Issue6Tests.The_cross_encoder_reranker_with_the_pass_through_client_gives_the_rrf_order` | pass | pass | pass |
+
+- **Same order.** Facts searched by keyword and vector, entities and episodes by keyword, limit 3, once with the RRF
+  rerankers and once with the cross-encoder rerankers over `PassThroughCrossEncoderClient`: the facts, entities and
+  episodes come back in the same order. Entities use one search method because, as upstream, they reach the
+  cross-encoder in the order the methods found them rather than in RRF order.

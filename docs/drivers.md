@@ -20,6 +20,29 @@ await driver.SaveToFileAsync("graph.json");
 await using var again = await InMemoryGraphDriver.LoadFromFileAsync("graph.json");
 ```
 
+### Several app servers: a group lock per database
+
+`Graphiti` runs one write at a time per group through an `IGroupLock`. The default, `InProcessGroupLock.Shared`, holds
+only within one process. A host running several app servers against one database registers the lock that ships with
+its driver, built from the driver's connection string and options, on every server:
+
+| Driver | Lock | Mechanism |
+| --- | --- | --- |
+| PostgreSQL | `PostgresGroupLock` | `pg_advisory_lock` on an unpooled connection; see [postgresql.md](postgresql.md#several-app-servers-postgresgrouplock) |
+| SQL Server | `SqlServerGroupLock` | `sp_getapplock`, session owner, on an unpooled connection; see [sqlserver.md](sqlserver.md#several-app-servers-sqlservergrouplock) |
+
+```csharp
+var groupLock = new PostgresGroupLock(connectionString, options);   // or new SqlServerGroupLock(connectionString, options)
+await using var graphiti = new Graphiti(driver, llm, embedder, reranker, groupLock: groupLock);
+// or, with dependency injection:
+services.AddSingleton<IGroupLock>(_ => new PostgresGroupLock(connectionString, options));
+```
+
+Both release the lock when the operation ends, when its connection drops, and when a wait is cancelled. The
+in-memory driver lives in one process, so the default lock is enough for it. Any other distributed lock (Redis and so
+on) can implement `IGroupLock`; the tests in `tests/GraphitiNet.Driver.Tests/Conformance/DistributedGroupLockTests.cs`
+show what one must do.
+
 ## The contract
 
 The XML docs on `IGraphDriver` and its operations interfaces are the reference. The rules every driver follows, and the
@@ -68,6 +91,14 @@ conformance suite checks:
   episode-access filter uses it.
 - `GetPreviousEpisodeUuidAsync`: the saga's latest episode other than the current one, by `ValidAt` then `CreatedAt`,
   both descending.
+- **Idempotency keys** (`EpisodicNode.IdempotencyKey`): stored with the episode and unique per group; saving an episode
+  whose key another episode of its group has fails (with the backend's exception); episodes without a key never
+  collide. `EpisodeNodeOps.GetByIdempotencyKeyAsync` finds the episode with a key in a group (exact, case-sensitive)
+  or returns `null`. `EpisodeNodeOps.AddOrGetByIdempotencyKeyAsync` saves the episode unless its key is taken, and
+  returns the episode that holds the key; when several callers race with one key, one episode is saved and all get
+  it. The defaults scan `GetByGroupIdsAsync` and catch the save failure of the losing writer; override both with an
+  indexed lookup and an insert that the unique index arbitrates. Core uses them for `AddEpisodeAsync`'s
+  `idempotencyKey`.
 
 ### Search
 

@@ -1,5 +1,6 @@
 # Pushes to main and pull requests run the checks: the release check (scripts/check-release.sh), build, the tests
-# (against PostgreSQL with pgvector and SQL Server 2025), and pack. A v<version> tag runs them, then pushes the packages
+# (against PostgreSQL with pgvector and SQL Server 2025, plus PostgreSQL without pgvector and SQL Server 2022 for the
+# error on a database that cannot hold vectors), and pack. A v<version> tag runs them, then pushes the packages
 # (GraphitiNet, GraphitiNet.PostgreSql, GraphitiNet.SqlServer) to nuget.org through Trusted Publishing (a one-hour key
 # nuget.org gives this workflow, no stored secret) and makes a GitHub release (see CONTRIBUTING.md, "Releasing"). Each
 # action is pinned by commit SHA, its version in a comment; Dependabot keeps them current (.github/dependabot.yml).
@@ -46,9 +47,33 @@ jobs:
           --health-interval 10s
           --health-timeout 10s
           --health-retries 20
+      # Without pgvector and without the vector type, for the VectorStoreUnavailableException tests.
+      postgres-novector:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mssql2022:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Graphiti_dev_Passw0rd
+        ports: ["1434:1433"]
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Graphiti_dev_Passw0rd -C -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 20
     env:
       GRAPHITI_TEST_POSTGRES: "Host=localhost;Username=postgres;Password=postgres;Database=graphiti_pg_tests"
       GRAPHITI_TEST_SQLSERVER: "Server=localhost,1433;Database=graphiti_sqlserver_tests;User Id=sa;Password=Graphiti_dev_Passw0rd;TrustServerCertificate=True"
+      GRAPHITI_TEST_POSTGRES_NO_PGVECTOR: "Host=localhost;Port=5433;Username=postgres;Password=postgres;Database=postgres"
+      GRAPHITI_TEST_SQLSERVER_NO_VECTOR: "Server=localhost,1434;Database=graphiti_novector_tests;User Id=sa;Password=Graphiti_dev_Passw0rd;TrustServerCertificate=True"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0

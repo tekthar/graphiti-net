@@ -19,7 +19,7 @@ internal static class RecordMapper
 
     public static string EpisodeColumns(string a) =>
         $"{a}.uuid, {a}.group_id, {a}.name, {a}.labels, {a}.created_at, {a}.source, {a}.source_description, "
-        + $"{a}.content, {a}.valid_at, {a}.entity_edges, {a}.episode_metadata";
+        + $"{a}.content, {a}.valid_at, {a}.entity_edges, {a}.episode_metadata, {a}.idempotency_key";
 
     public static string EntityColumns(string a) =>
         $"{a}.uuid, {a}.group_id, {a}.name, {a}.labels, {a}.created_at, {a}.summary, {a}.attributes";
@@ -44,6 +44,7 @@ internal static class RecordMapper
         ValidAt = r.GetDateTimeOffset(8),
         EntityEdges = Strings(r.GetString(9)),
         EpisodeMetadata = r.IsDBNull(10) ? null : r.GetString(10),
+        IdempotencyKey = r.IsDBNull(11) ? null : r.GetString(11),
     });
 
     public static EntityNode ReadEntity(SqlDataReader r) => ToModel(new EntityNodeRecord
@@ -104,6 +105,7 @@ internal static class RecordMapper
         ValidAt = e.ValidAt,
         EntityEdges = e.EntityEdges,
         EpisodeMetadata = e.EpisodeMetadata,
+        IdempotencyKey = e.IdempotencyKey,
     };
 
     public static readonly Expression<Func<EntityNodeRecord, EntityNodeRecord>> EntityProjection =
@@ -162,6 +164,7 @@ internal static class RecordMapper
         ValidAt = r.ValidAt.ToUniversalTime(),
         EntityEdges = r.EntityEdges,
         EpisodeMetadata = JsonValues.DeserializeNullable(r.EpisodeMetadata),
+        IdempotencyKey = r.IdempotencyKey,
     };
 
     public static EntityNode ToModel(EntityNodeRecord r) => new()

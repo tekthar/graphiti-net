@@ -79,6 +79,11 @@ public sealed partial class Graphiti : IAsyncDisposable
     /// addition.</param>
     /// <param name="modelCallGate">Asked before each model call; can refuse it. A graphiti-net addition.</param>
     /// <param name="logger">Where to log; defaults to no logging.</param>
+    /// <param name="modelCallRetry">Retries transient provider errors (HTTP 429, 5xx, timeouts) of each LLM,
+    /// embedding and rerank call with exponential backoff; <see langword="null"/> (the default) retries nothing
+    /// beyond the clients' own retries, as upstream. A graphiti-net addition.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="modelCallRetry"/> has a setting out of
+    /// range.</exception>
     public Graphiti(
         IGraphDriver graphDriver,
         LLMClient? llmClient = null,
@@ -90,9 +95,11 @@ public sealed partial class Graphiti : IAsyncDisposable
         IReadOnlyDictionary<string, LLMClient>? promptRoutes = null,
         IGroupLock? groupLock = null,
         IModelCallGate? modelCallGate = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        ModelCallRetryOptions? modelCallRetry = null)
     {
         ArgumentNullException.ThrowIfNull(graphDriver);
+        modelCallRetry?.Validate();
         Driver = graphDriver;
         StoreRawEpisodeContent = storeRawEpisodeContent;
         MaxCoroutines = maxCoroutines;
@@ -102,17 +109,29 @@ public sealed partial class Graphiti : IAsyncDisposable
         PromptLibrary = promptLibrary ?? PromptLibrary.Default;
         GroupLock = groupLock ?? InProcessGroupLock.Shared;
         ModelCallGate = modelCallGate;
+        ModelCallRetry = modelCallRetry;
         Logger = logger ?? NullLogger.Instance;
 
+        // The gate wraps the retries, so it is asked once per logical call.
+        EmbedderClient embedderInUse = modelCallRetry is null
+            ? Embedder
+            : new RetryingEmbedderClient(Embedder, modelCallRetry, Logger);
+        CrossEncoderClient crossEncoderInUse = modelCallRetry is null
+            ? CrossEncoder
+            : new RetryingCrossEncoderClient(CrossEncoder, modelCallRetry, Logger);
         Clients = new GraphitiClients
         {
             Driver = Driver,
             LlmClient = LlmClient,
-            Embedder = modelCallGate is null ? Embedder : new GatedEmbedderClient(Embedder),
-            CrossEncoder = modelCallGate is null ? CrossEncoder : new GatedCrossEncoderClient(CrossEncoder),
+            Embedder = modelCallGate is null ? embedderInUse : new GatedEmbedderClient(embedderInUse),
+            CrossEncoder = modelCallGate is null ? crossEncoderInUse : new GatedCrossEncoderClient(crossEncoderInUse),
             PromptLibrary = PromptLibrary,
             PromptRoutes = promptRoutes,
             MaxCoroutines = maxCoroutines,
+            ModelCallRetry = modelCallRetry,
+
+            // Retries of LLM calls are logged here; without retries the pipeline logs nothing, as in 0.1.0.
+            Logger = modelCallRetry is null ? NullLogger.Instance : Logger,
         };
 
         Nodes = new NodeNamespace(Driver, Clients.Embedder);
@@ -134,8 +153,9 @@ public sealed partial class Graphiti : IAsyncDisposable
     /// <summary>The prompts in use (upstream <c>prompt_library</c>).</summary>
     public PromptLibrary PromptLibrary { get; }
 
-    /// <summary>The services bundle the pipeline uses (upstream <c>clients</c>). With a model call gate, its embedder
-    /// and cross-encoder are gate-checking wrappers around <see cref="Embedder"/> and <see cref="CrossEncoder"/>.</summary>
+    /// <summary>The services bundle the pipeline uses (upstream <c>clients</c>). With a model call gate or a retry
+    /// policy, its embedder and cross-encoder are gate-checking and retrying wrappers around <see cref="Embedder"/>
+    /// and <see cref="CrossEncoder"/>.</summary>
     public GraphitiClients Clients { get; }
 
     /// <summary>Whether episode text is kept after processing (upstream <c>store_raw_episode_content</c>).</summary>
@@ -159,6 +179,9 @@ public sealed partial class Graphiti : IAsyncDisposable
 
     /// <summary>The model call gate, if any. A graphiti-net addition.</summary>
     public IModelCallGate? ModelCallGate { get; }
+
+    /// <summary>The retry policy around each model call, if any. A graphiti-net addition.</summary>
+    public ModelCallRetryOptions? ModelCallRetry { get; }
 
     /// <summary>Where the instance logs.</summary>
     public ILogger Logger { get; }

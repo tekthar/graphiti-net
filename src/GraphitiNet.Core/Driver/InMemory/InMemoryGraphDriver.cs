@@ -105,6 +105,7 @@ public sealed class InMemoryGraphDriver : IGraphDriver
         var facts = entityEdges.Select(e => RecordCopies.Copy(e, includeEmbedding: true)).ToList();
         lock (_store.Gate)
         {
+            _store.CheckIdempotencyKeys(episodes);
             Put(_store.Episodes, episodes, n => n.Uuid);
             Put(_store.Entities, entities, n => n.Uuid);
             Put(_store.EpisodicEdges, mentions, e => e.Uuid);

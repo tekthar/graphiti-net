@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The scripted model, embedder and reranker of the acceptance tests, for the distributed group lock tests. -->
+    <Compile Include="..\GraphitiNet.Acceptance.Tests\Fakes.cs" Link="Shared\Fakes.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\GraphitiNet.Core\GraphitiNet.Core.csproj" />
   </ItemGroup>
 

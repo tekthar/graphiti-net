@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See LICENSE.
 
 using GraphitiNet.Driver.PostgreSql.Entities;
+using GraphitiNet.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Npgsql;
@@ -32,7 +33,7 @@ public sealed class PostgresDriverTests : IAsyncLifetime
             "SELECT table_name::text FROM information_schema.tables WHERE table_schema = $1 ORDER BY 1", _schema);
         Assert.Equal(
             ["communities", "community_edges", "entities", "entity_edges", "episodes", "episodic_edges",
-                "has_episode_edges", "next_episode_edges", "sagas", "search_statistics"],
+                "has_episode_edges", "next_episode_edges", "sagas", "search_statistics", "search_term_counts"],
             tables);
 
         var indexes = await QueryAsync<string>("SELECT indexdef FROM pg_indexes WHERE schemaname = $1", _schema);
@@ -76,6 +77,51 @@ public sealed class PostgresDriverTests : IAsyncLifetime
         Assert.Empty(await driver.CommunityEdgeOps.GetByGroupIdsAsync([Group]));
         Assert.Single(await driver.EntityNodeOps.GetByGroupIdsAsync([Group]));
     }
+
+    [PostgresFact]
+    public async Task Build_adds_the_idempotency_key_column_and_index_to_a_0_1_0_episodes_table()
+    {
+        await using var driver = new PostgresDriver(TestDatabase.ConnectionString, Options);
+        await driver.GraphOps.BuildIndicesAndConstraintsAsync();
+        var old = Episode("stored before the upgrade");
+        await driver.EpisodeNodeOps.SaveAsync(old);
+
+        // The episodes table as graphiti-net 0.1.0 created it.
+        await ExecuteAsync(
+            $"DROP INDEX \"{_schema}\".ux_episodes_group_id_idempotency_key; "
+            + $"ALTER TABLE \"{_schema}\".episodes DROP COLUMN idempotency_key");
+
+        // A fresh driver, as after the application upgrade; building twice changes nothing more.
+        await using var upgraded = new PostgresDriver(TestDatabase.ConnectionString, Options);
+        await upgraded.GraphOps.BuildIndicesAndConstraintsAsync();
+        await upgraded.GraphOps.BuildIndicesAndConstraintsAsync();
+
+        Assert.Equal(["text"], await QueryAsync<string>(
+            "SELECT udt_name::text FROM information_schema.columns "
+            + "WHERE table_schema = $1 AND table_name = 'episodes' AND column_name = 'idempotency_key'",
+            _schema));
+        var index = Assert.Single(await QueryAsync<string>(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = $1 AND indexname = 'ux_episodes_group_id_idempotency_key'",
+            _schema));
+        Assert.Contains("UNIQUE INDEX", index, StringComparison.Ordinal);
+        Assert.Null((await upgraded.EpisodeNodeOps.GetByUuidAsync(old.Uuid)).IdempotencyKey);
+
+        var stored = await upgraded.EpisodeNodeOps.AddOrGetByIdempotencyKeyAsync(Keyed(Episode("keyed"), "k"));
+        Assert.Equal("k", (await upgraded.EpisodeNodeOps.GetByIdempotencyKeyAsync(Group, "k"))!.IdempotencyKey);
+        Assert.Equal(stored.Uuid, (await upgraded.EpisodeNodeOps.AddOrGetByIdempotencyKeyAsync(Keyed(Episode(), "k"))).Uuid);
+    }
+
+    private static EpisodicNode Keyed(EpisodicNode episode, string key) => new()
+    {
+        Name = episode.Name,
+        GroupId = episode.GroupId,
+        Source = episode.Source,
+        SourceDescription = episode.SourceDescription,
+        Content = episode.Content,
+        ValidAt = episode.ValidAt,
+        CreatedAt = episode.CreatedAt,
+        IdempotencyKey = key,
+    };
 
     [PostgresFact]
     public async Task Bulk_ingestion_is_one_transaction()
