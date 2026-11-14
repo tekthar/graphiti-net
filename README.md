@@ -30,7 +30,7 @@ it came from.
 | Providers: OpenAI, Azure OpenAI, OpenAI-compatible, any Microsoft.Extensions.AI client | Works |
 | `AddEpisodeBulkAsync`, with combined extraction by default | Works; replayed against a recorded upstream `add_episode_bulk` run on every commit |
 | Graph building against Python Graphiti on LongMemEval | 100 messages: within upstream's own run-to-run variation ([results](parity/results/2026-11-12-lme-graph-building.md)) |
-| Question answering on LongMemEval against Python Graphiti | 24 questions: graphiti-net 21/24 (in memory and PostgreSQL), Python Graphiti 18/24 and 19/24 ([results](parity/results/2026-11-13-lme-qa.md)) |
+| Question answering on LongMemEval against Python Graphiti | 102 questions on PostgreSQL: graphiti-net 89/102, Python Graphiti 83/102 ([results](parity/results/2026-11-14-lme-qa-102.md)); 24 questions: graphiti-net 21/24, Python Graphiti 18/24 and 19/24 ([results](parity/results/2026-11-13-lme-qa.md)) |
 | DMR and LoCoMo benchmarks | Before 1.0 |
 | Consumer requirements (AbpAgent, issues #1 and #2) | Every criterion tested on both drivers ([acceptance](docs/acceptance.md)) |
 

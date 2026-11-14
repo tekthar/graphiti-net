@@ -56,8 +56,9 @@ differs between Lucene and graphiti-net's drivers (and between upstream runs: Lu
 documents until segments merge). The replay accepts a prompt whose only difference is the order of an indexed
 candidate list and translates the recorded answer's indexes; a different set of candidates still fails.
 
-Question answering on LongMemEval (24 questions, upstream's `qa_prompt` and `eval_prompt`): graphiti-net 21/24 in
-memory and on PostgreSQL, Python Graphiti 18/24 and 19/24 ([results](results/2026-11-13-lme-qa.md)).
+Question answering on LongMemEval (upstream's `qa_prompt` and `eval_prompt`): on 102 questions, graphiti-net on
+PostgreSQL 89/102 and Python Graphiti 83/102 ([results](results/2026-11-14-lme-qa-102.md)); on 24 questions, graphiti-net
+21/24 in memory and on PostgreSQL, Python Graphiti 18/24 and 19/24 ([results](results/2026-11-13-lme-qa.md)).
 
 ## Datasets
 

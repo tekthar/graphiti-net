@@ -162,7 +162,7 @@ writes through the group lock.
 | — | Parity replay of upstream's recorded answers on every commit | Done |
 | — | Differential tests against upstream's own functions | Done |
 | Graph-building evaluation (`eval_e2e_graph_building.py`) | Run against Python Graphiti on 100 messages | Done |
-| LongMemEval question answering | 24 questions: 21/24 against upstream's 18/24 and 19/24 | Partial: 100+ questions planned for 0.2 |
+| LongMemEval question answering | 102 questions on PostgreSQL: 89/102 against upstream's 83/102 ([results](../parity/results/2026-11-14-lme-qa-102.md)); 24 questions: 21/24 against 18/24 and 19/24 | Done for 0.2; DMR and LoCoMo in 0.3 |
 | DMR | — | Planned 0.3 |
 | LoCoMo | — | Planned 0.3 |
 
@@ -176,6 +176,15 @@ writes through the group lock.
 | Call context and per-call token usage | Done |
 | Model-call gate (budgets) and cancellation between steps | Done |
 | Host-owned tables (schema, prefix) and keyword search language per group | Done |
+| Group locks across servers: `PostgresGroupLock`, `SqlServerGroupLock` ([#7](https://github.com/tekthar/graphiti-net/issues/7)) | Done (0.2) |
+| Reads with the episode access filter: `GetGroupGraphAsync`, `GetFactsByNodeUuidAsync`, `GetGroupEpisodesAsync` ([#10](https://github.com/tekthar/graphiti-net/issues/10)) | Done (0.2) |
+| `PassThroughCrossEncoderClient`, a reranker that keeps the given order ([#6](https://github.com/tekthar/graphiti-net/issues/6)) | Done (0.2) |
+| `VectorStoreUnavailableException` and `CanHoldVectorsAsync` ([#8](https://github.com/tekthar/graphiti-net/issues/8)) | Done (0.2) |
+| `GraphitiSchema.Tables(options)` ([#11](https://github.com/tekthar/graphiti-net/issues/11)) | Done (0.2) |
+| Idempotency keys on `AddEpisodeAsync` and `AddEpisodeBulkAsync` ([#9](https://github.com/tekthar/graphiti-net/issues/9)) | Done (0.2) |
+| Opt-in retry of rate limits and transient provider errors (`ModelCallRetryOptions`) | Done (0.2) |
+| Guided `json_object` output for providers without `json_schema` (`StructuredOutputMode.JsonObjectGuided`) | Done (0.2) |
+| PostgreSQL keyword search fast on common words at 1M records ([benchmark](benchmarks/postgresql-keyword-search.md)) | Done (0.2) |
 | Dependency injection: `services.AddGraphiti(...)` with options binding | Planned 0.3 |
 | .NET Aspire integration (PostgreSQL resource, health checks) | Planned 0.3 |
 

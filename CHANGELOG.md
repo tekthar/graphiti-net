@@ -83,6 +83,15 @@ All notable changes to graphiti-net are written here. The format follows
   they skipped all three, because they override `GenerateResponseAsync`; only clients on the base implementation,
   such as `ChatClientLLMClient`, honoured them.
 
+### Measured
+
+- **LongMemEval question answering on 102 questions** (17 per type), on PostgreSQL against Python Graphiti on Neo4j,
+  with DeepSeek `deepseek-flash` building and answering and `gpt-5.5` grading: graphiti-net 89/102, Python Graphiti
+  83/102 (7 questions right only with graphiti-net, 1 only with Python Graphiti). See
+  [the results](parity/results/2026-11-14-lme-qa-102.md).
+- **PostgreSQL keyword search at 1M mostly Arabic records**: see the Changed entry above and
+  [the benchmark](docs/benchmarks/postgresql-keyword-search.md).
+
 ## [0.1.0] - 2026-11-13
 
 The first release. Ported from Python Graphiti
