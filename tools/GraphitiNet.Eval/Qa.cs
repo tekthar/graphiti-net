@@ -49,6 +49,27 @@ internal static class Qa
         return new LLMConfig(model: model, smallModel: Environment.GetEnvironmentVariable("SMALL_LLM_MODEL") ?? model);
     }
 
+    // The client that builds graphs and answers: OpenAI by default, or any OpenAI-compatible endpoint (DeepSeek, vLLM,
+    // ...) through OpenAIGenericClient when LLM_BASE_URL is set, as lme_qa.py does. The grader always uses OpenAI.
+    private static LLMClient BuildLlm()
+    {
+        if (Environment.GetEnvironmentVariable("LLM_BASE_URL") is not { Length: > 0 } baseUrl)
+        {
+            return new OpenAIClient(LlmConfig());
+        }
+
+        var model = Environment.GetEnvironmentVariable("LLM_MODEL") ?? "gpt-5-mini";
+        var config = new LLMConfig(
+            apiKey: Environment.GetEnvironmentVariable("LLM_API_KEY") ?? "dummy",
+            model: model,
+            baseUrl: baseUrl,
+            smallModel: Environment.GetEnvironmentVariable("SMALL_LLM_MODEL") ?? model);
+        var mode = Environment.GetEnvironmentVariable("LLM_STRUCTURED_OUTPUT") == "json_schema"
+            ? StructuredOutputMode.JsonSchema
+            : StructuredOutputMode.JsonObject;
+        return new OpenAIGenericClient(config, structuredOutputMode: mode);
+    }
+
     private static int Concurrency() =>
         int.Parse(Environment.GetEnvironmentVariable("QA_CONCURRENCY") ?? "8", CultureInfo.InvariantCulture);
 
@@ -77,7 +98,7 @@ internal static class Qa
         IGraphDriver driver = postgres is not null
             ? new PostgresDriver(postgres, new PostgresGraphOptions { Schema = "lme_qa", EmbeddingDimension = embedderConfig.EmbeddingDim })
             : new InMemoryGraphDriver();
-        await using var setup = new Graphiti(driver, new OpenAIClient(LlmConfig()), new OpenAIEmbedder(embedderConfig));
+        await using var setup = new Graphiti(driver, BuildLlm(), new OpenAIEmbedder(embedderConfig));
         await setup.BuildIndicesAndConstraintsAsync(deleteExisting: true);
 
         var config = SearchConfigRecipes.CombinedHybridSearchRrf with
@@ -141,7 +162,7 @@ internal static class Qa
                 }
                 catch (Exception e) when (attempt < 2)
                 {
-                    Console.WriteLine($"{id}: attempt {attempt + 1} failed ({e.GetType().Name}); retrying");
+                    Console.WriteLine($"{id}: attempt {attempt + 1} failed ({e.GetType().Name}: {e.Message[..Math.Min(500, e.Message.Length)]}); retrying");
                     await Task.Delay(TimeSpan.FromSeconds(30));
                 }
             }
@@ -155,7 +176,7 @@ internal static class Qa
                 var item = byId[id];
                 // One client per question, so each question's token usage is its own. The Graphiti instances share
                 // the driver and are not disposed (that would close it); `setup` disposes it at the end.
-                var llm = new OpenAIClient(LlmConfig());
+                var llm = BuildLlm();
                 var graphiti = new Graphiti(
                     driver, llm, new OpenAIEmbedder(embedderConfig), new OpenAIRerankerClient(LlmConfig()));
                 var groupId = $"lme_qa_{label}_{id}" + (attempt > 0 ? $"_r{attempt}" : "");
@@ -255,7 +276,7 @@ internal static class Qa
             await gate.WaitAsync();
             try
             {
-                await AnswerAsync(new OpenAIClient(LlmConfig()), node!.AsObject(), node["qa_query"]!.GetValue<string>());
+                await AnswerAsync(BuildLlm(), node!.AsObject(), node["qa_query"]!.GetValue<string>());
             }
             finally
             {
@@ -268,7 +289,7 @@ internal static class Qa
     }
 
     /// <summary>Answers with eval.qa_prompt from the facts and entity summaries in <paramref name="answer"/>.</summary>
-    private static async Task AnswerAsync(OpenAIClient llm, JsonObject answer, string query)
+    private static async Task AnswerAsync(LLMClient llm, JsonObject answer, string query)
     {
         var context = new Dictionary<string, object?>
         {

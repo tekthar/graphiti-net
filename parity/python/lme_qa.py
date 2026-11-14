@@ -50,7 +50,8 @@ from graphiti_core import Graphiti
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 from graphiti_core.driver.neo4j_driver import Neo4jDriver
 from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
-from graphiti_core.llm_client import LLMConfig, OpenAIClient
+from graphiti_core.llm_client import LLMConfig, LLMClient, OpenAIClient
+from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.prompts import prompt_library
 from graphiti_core.prompts.eval import EvalResponse, QAResponse
@@ -70,6 +71,29 @@ TYPES_ORDER = [
 def llm_config(model: str | None = None) -> LLMConfig:
     default = os.environ.get('LLM_MODEL', 'gpt-5-mini')
     return LLMConfig(model=model or default, small_model=os.environ.get('SMALL_LLM_MODEL', model or default))
+
+
+def build_llm() -> LLMClient:
+    """The client that builds graphs and answers: OpenAI by default, or any OpenAI-compatible endpoint (DeepSeek,
+    vLLM, ...) through upstream's OpenAIGenericClient when LLM_BASE_URL is set. The grader always uses OpenAI."""
+    base_url = os.environ.get('LLM_BASE_URL')
+    if not base_url:
+        return OpenAIClient(llm_config())
+    config = llm_config()
+    config.base_url = base_url
+    config.api_key = os.environ.get('LLM_API_KEY', 'dummy')
+    client = OpenAIGenericClient(config, structured_output_mode=os.environ.get('LLM_STRUCTURED_OUTPUT', 'json_object'))
+    # Upstream's generic client does not record token usage; record it from each response so runs report tokens.
+    create = client.client.chat.completions.create
+
+    async def tracked(*args, **kwargs):
+        response = await create(*args, **kwargs)
+        if response.usage is not None:
+            client.token_tracker.record(None, response.usage.prompt_tokens, response.usage.completion_tokens)
+        return response
+
+    client.client.chat.completions.create = tracked
+    return client
 
 
 def qa_query(item: dict) -> str:
@@ -128,7 +152,7 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
         # One client per question, so each question's token usage is its own.
         return Graphiti(
             graph_driver=driver,
-            llm_client=OpenAIClient(llm_config()),
+            llm_client=build_llm(),
             embedder=OpenAIEmbedder(embedder_config),
             cross_encoder=OpenAIRerankerClient(llm_config()),
         )
@@ -169,7 +193,10 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
             except Exception as e:  # noqa: BLE001 - any provider error; the last one is re-raised
                 if attempt == MAX_ATTEMPTS - 1:
                     raise
-                print(f'{item["question_id"]}: attempt {attempt + 1} failed ({type(e).__name__}); retrying', flush=True)
+                print(
+                    f'{item["question_id"]}: attempt {attempt + 1} failed ({type(e).__name__}: {str(e)[:500]}); retrying',
+                    flush=True,
+                )
                 await asyncio.sleep(30)
         raise AssertionError('unreachable')
 
@@ -233,7 +260,7 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
     print(f'{len(answers)} questions in {time.perf_counter() - started:.0f}s -> {out_path}')
 
 
-async def answer_one(llm: OpenAIClient, query: str, facts: list[dict], entities: list[dict]) -> dict:
+async def answer_one(llm: LLMClient, query: str, facts: list[dict], entities: list[dict]) -> dict:
     messages = prompt_library.eval.qa_prompt(qa_context(query, facts, entities))
     prompt_system, prompt_user = messages[0].content, messages[1].content
     before = llm.token_tracker.get_total_usage()
@@ -255,7 +282,7 @@ async def answer(in_path: str, out_path: str) -> None:
 
     async def one(a: dict) -> dict:
         async with gate:
-            answered = await answer_one(OpenAIClient(llm_config()), a['qa_query'], a['facts'], a['entity_summaries'])
+            answered = await answer_one(build_llm(), a['qa_query'], a['facts'], a['entity_summaries'])
             return {**a, **answered}
 
     run_data['answers'] = await asyncio.gather(*[one(a) for a in run_data['answers']])

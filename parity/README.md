@@ -119,6 +119,11 @@ Both `run` commands save each answered question to `<answers.json>.partial.jsonl
 again after a run stopped part way (out of quota, a crash) skips the questions already answered and continues with the
 rest. The file is removed when the run completes.
 
+To build and answer with another OpenAI-compatible provider, set `LLM_BASE_URL` (for example
+`https://api.deepseek.com/v1`), `LLM_MODEL`, and `LLM_API_KEY` if the endpoint needs one. Both harnesses then use
+`OpenAIGenericClient` (upstream's and graphiti-net's) with `json_object` structured output (`LLM_STRUCTURED_OUTPUT=json_schema`
+for servers that support it). Embeddings and the grader stay on OpenAI.
+
 ## Differential tests
 
 The dataset runs above check whole pipelines. The differential tests check single functions: they prove that a
