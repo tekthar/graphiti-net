@@ -53,9 +53,13 @@ public sealed class SqlServerGroupLock : IGroupLock
     private readonly string _tablePrefix;
     private readonly InProcessGroupLock _local = new();
 
+    /// <summary>The connection string the lock's own connections use.</summary>
+    internal string ConnectionString => _connectionString;
+
     /// <summary>Creates the lock.</summary>
     /// <param name="connectionString">A SqlClient connection string for the graph's database, usually the driver's.
-    /// Pooling is turned off for the lock's own connections whatever it says.</param>
+    /// Pooling is turned off for the lock's own connections whatever it says. Connections are encrypted
+    /// (<c>Encrypt=Mandatory</c>) unless it sets <c>Encrypt</c> itself.</param>
     /// <param name="options">The graph's settings: their schema and table prefix scope the lock resources. The
     /// defaults if <see langword="null"/>.</param>
     public SqlServerGroupLock(string connectionString, SqlServerGraphOptions? options = null)
@@ -63,11 +67,21 @@ public sealed class SqlServerGroupLock : IGroupLock
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         options ??= SqlServerGraphOptions.Default;
         options.Validate();
-        _connectionString = new SqlConnectionStringBuilder(connectionString)
+        var builder = new SqlConnectionStringBuilder(connectionString)
         {
             Pooling = false,
             Enlist = false,
-        }.ConnectionString;
+        };
+
+        // Encrypted unless the host's connection string says otherwise. SqlClient's default is already Mandatory; it is
+        // set explicitly so the lock's connections never depend on the default. A host that turned encryption off for
+        // the driver (a local server without TLS, say) gets the same setting here, or the lock could not connect.
+        if (!builder.ShouldSerialize("Encrypt"))
+        {
+            builder.Encrypt = SqlConnectionEncryptOption.Mandatory;
+        }
+
+        _connectionString = builder.ConnectionString;
         _schema = options.Schema;
         _tablePrefix = options.TablePrefix;
     }

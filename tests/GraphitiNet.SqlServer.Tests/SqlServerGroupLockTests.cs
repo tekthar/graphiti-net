@@ -73,6 +73,19 @@ public sealed class SqlServerGroupLockTests : DistributedGroupLockTests
         Assert.Contains($"returned {result}", e.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Lock_connections_are_encrypted_unless_the_host_sets_encrypt()
+    {
+        var unset = new SqlConnectionStringBuilder(
+            new SqlServerGroupLock("Server=db;Database=g;User Id=u;Password=p").ConnectionString);
+        var off = new SqlConnectionStringBuilder(
+            new SqlServerGroupLock("Server=db;Database=g;User Id=u;Password=p;Encrypt=False").ConnectionString);
+
+        Assert.Equal(SqlConnectionEncryptOption.Mandatory, unset.Encrypt);
+        Assert.False(unset.Pooling);
+        Assert.Equal(SqlConnectionEncryptOption.Optional, off.Encrypt);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

@@ -34,7 +34,8 @@ All notable changes to graphiti-net are written here. The format follows
   `PostgresGroupLock` (`GraphitiNet.PostgreSql`, `pg_advisory_lock`) and `SqlServerGroupLock`
   (`GraphitiNet.SqlServer`, `sp_getapplock` owned by the session, negative results thrown). Pass one as
   `groupLock:` so several app servers writing to one database ingest into a group one at a time. Each holds its lock
-  on an unpooled connection of its own, keyed by a SHA-256 of the schema, table prefix and group id; releases it on
+  on an unpooled connection of its own (`SqlServerGroupLock` encrypts it, `Encrypt=Mandatory`, unless the connection
+  string sets `Encrypt`), keyed by a SHA-256 of the schema, table prefix and group id; releases it on
   dispose, when the connection drops, or when a wait is cancelled; and queues waiters within one process without a
   connection each. See [docs/drivers.md](docs/drivers.md#several-app-servers-a-group-lock-per-database).
 - **Idempotency keys on episodes** ([#9](https://github.com/tekthar/graphiti-net/issues/9)): `AddEpisodeAsync` takes
