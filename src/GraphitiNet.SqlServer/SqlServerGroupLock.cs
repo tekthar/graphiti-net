@@ -58,8 +58,9 @@ public sealed class SqlServerGroupLock : IGroupLock
 
     /// <summary>Creates the lock.</summary>
     /// <param name="connectionString">A SqlClient connection string for the graph's database, usually the driver's.
-    /// Pooling is turned off for the lock's own connections whatever it says. Connections are encrypted
-    /// (<c>Encrypt=Mandatory</c>) unless it sets <c>Encrypt</c> itself.</param>
+    /// Pooling is turned off for the lock's own connections whatever it says. Connections are always encrypted
+    /// (<c>Encrypt=Mandatory</c>), even if it turns encryption off; with a self-signed server certificate, keep
+    /// <c>TrustServerCertificate=True</c> in it.</param>
     /// <param name="options">The graph's settings: their schema and table prefix scope the lock resources. The
     /// defaults if <see langword="null"/>.</param>
     public SqlServerGroupLock(string connectionString, SqlServerGraphOptions? options = null)
@@ -67,19 +68,15 @@ public sealed class SqlServerGroupLock : IGroupLock
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         options ??= SqlServerGraphOptions.Default;
         options.Validate();
+        // Always encrypted, whatever the host's string says: the lock's connections carry nothing secret, but they log in.
+        // SQL Server always offers TLS (with a self-signed certificate if none is installed); hosts with one keep
+        // TrustServerCertificate=True in their connection string.
         var builder = new SqlConnectionStringBuilder(connectionString)
         {
             Pooling = false,
             Enlist = false,
+            Encrypt = SqlConnectionEncryptOption.Mandatory,
         };
-
-        // Encrypted unless the host's connection string says otherwise. SqlClient's default is already Mandatory; it is
-        // set explicitly so the lock's connections never depend on the default. A host that turned encryption off for
-        // the driver (a local server without TLS, say) gets the same setting here, or the lock could not connect.
-        if (!builder.ShouldSerialize("Encrypt"))
-        {
-            builder.Encrypt = SqlConnectionEncryptOption.Mandatory;
-        }
 
         _connectionString = builder.ConnectionString;
         _schema = options.Schema;
