@@ -246,6 +246,9 @@ await using var graphiti = new Graphiti(
 services.AddSingleton<IGroupLock>(_ => new SqlServerGroupLock(connectionString, options));
 ```
 
+- **Encryption.** The lock's own connections are always encrypted (`Encrypt=Mandatory`), even when the connection
+  string turns encryption off. With a self-signed server certificate, as in a local container, keep
+  `TrustServerCertificate=True` in the connection string.
 - **How it locks.** Each group's lock is an exclusive application lock owned by the session (`sp_getapplock
   @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = -1`), taken on a connection of its own with pooling
   off, so it is released exactly when the operation ends (a pooled connection would keep it after going back to the
