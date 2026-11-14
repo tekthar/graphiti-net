@@ -322,7 +322,7 @@ static string Invariant(FormattableString s) => s.ToString(CultureInfo.Invariant
 static async Task EnsureDatabaseAsync(string connectionString)
 {
     var builder = new NpgsqlConnectionStringBuilder(connectionString);
-    var database = builder.Database!;
+    var database = Identifier.Check(builder.Database!);
     builder.Database = "postgres";
     await using var connection = new NpgsqlConnection(builder.ConnectionString);
     await connection.OpenAsync();
@@ -346,7 +346,7 @@ internal sealed record Options(string Schema, double Scale, bool Simple, int Par
         }
 
         return new Options(
-            Get("--schema") ?? "bench",
+            Identifier.Check(Get("--schema") ?? "bench"),
             double.Parse(Get("--scale") ?? "1", CultureInfo.InvariantCulture),
             args.Contains("--simple"),
             int.Parse(Get("--parallel") ?? "2", CultureInfo.InvariantCulture),
@@ -355,4 +355,16 @@ internal sealed record Options(string Schema, double Scale, bool Simple, int Par
             Get("--out"),
             int.Parse(Get("--rows") ?? "5000", CultureInfo.InvariantCulture));
     }
+}
+
+/// <summary>Command-line names that end up in SQL as identifiers: only lower-case letters, digits and underscores.</summary>
+internal static partial class Identifier
+{
+    public static string Check(string name) =>
+        Pattern().IsMatch(name)
+            ? name
+            : throw new ArgumentException($"'{name}' is not a plain identifier (a-z, 0-9, _; at most 63 characters)");
+
+    [System.Text.RegularExpressions.GeneratedRegex("^[a-z_][a-z0-9_]{0,62}$")]
+    private static partial System.Text.RegularExpressions.Regex Pattern();
 }
