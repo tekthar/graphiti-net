@@ -6,6 +6,92 @@ All notable changes to graphiti-net are written here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Reads that apply the episode access filter** (#10): `Graphiti.GetGroupGraphAsync` (a group's entities and the
+  facts that start at them, paged), `GetFactsByNodeUuidAsync` (a node's edges) and `GetGroupEpisodesAsync` (a group's
+  episodes, paged), also as `GraphitiNet.Search.VisibleReads` over any driver. They use search's visibility rules,
+  so search and reads agree on what one user can see; pages hold up to `limit` visible records and the cursor is the
+  last id scanned, so paging stays stable under filtering. Without a filter they return what the `Nodes` and `Edges`
+  namespace methods return. See [docs/api-compatibility.md](docs/api-compatibility.md).
+- **`PassThroughCrossEncoderClient`** (#6): a cross-encoder that keeps the given order and scores each passage by
+  its rank, for hosts with no reranking model. With it the fact and episode cross-encoder rerankers give the RRF
+  order. The default is still `OpenAIRerankerClient`.
+- The acceptance tests also run on SQL Server.
+- **`VectorStoreUnavailableException`** (`GraphitiNet.Driver`): `BuildIndicesAndConstraintsAsync` throws it, with the
+  database's own exception inside, when the database cannot hold embedding vectors: PostgreSQL without pgvector
+  installed, or where the role may not run `CREATE EXTENSION vector`, and SQL Server before 2025, which has no
+  `vector` type. The message names the database, what is missing and the fix (install pgvector, have a superuser run
+  `CREATE EXTENSION vector`, or use SQL Server 2025 / Azure SQL), so a host can show it to its administrator; `Reason`
+  says which case it is. `PostgresDriver.CanHoldVectorsAsync` and `SqlServerDriver.CanHoldVectorsAsync` check the
+  same before setup without creating anything (tekthar/graphiti-net#8).
+- **`GraphitiSchema.Tables(options)`** in `GraphitiNet.PostgreSql` and `GraphitiNet.SqlServer`: the tables the driver
+  creates for a schema name and table prefix, without a database, each with its qualified name and the record type it
+  holds; it includes PostgreSQL's `search_statistics` and `search_term_counts` and SQL Server's keyword index tables (`search_terms`,
+  `search_fields`). It reads the same EF Core model `BuildIndicesAndConstraintsAsync` builds from, and a test on each
+  driver checks it against the tables the build creates (tekthar/graphiti-net#11).
+- **Group locks that hold across servers** ([#7](https://github.com/tekthar/graphiti-net/issues/7)):
+  `PostgresGroupLock` (`GraphitiNet.PostgreSql`, `pg_advisory_lock`) and `SqlServerGroupLock`
+  (`GraphitiNet.SqlServer`, `sp_getapplock` owned by the session, negative results thrown). Pass one as
+  `groupLock:` so several app servers writing to one database ingest into a group one at a time. Each holds its lock
+  on an unpooled connection of its own, keyed by a SHA-256 of the schema, table prefix and group id; releases it on
+  dispose, when the connection drops, or when a wait is cancelled; and queues waiters within one process without a
+  connection each. See [docs/drivers.md](docs/drivers.md#several-app-servers-a-group-lock-per-database).
+- **Idempotency keys on episodes** ([#9](https://github.com/tekthar/graphiti-net/issues/9)): `AddEpisodeAsync` takes
+  `idempotencyKey` and `RawEpisode` has `IdempotencyKey`, unique per group. A call that failed after its episode was
+  saved is retried with the same key: an unprocessed episode is resumed, a processed one is replayed
+  (`AddEpisodeResults.Replayed`) without extracting again, so the retry ends with one episode and no duplicate entities
+  or facts. Two concurrent calls with one key create one episode. Stored as `EpisodicNode.IdempotencyKey`; drivers
+  gain `IEpisodeNodeOperations.GetByIdempotencyKeyAsync` and `AddOrGetByIdempotencyKeyAsync` (with default
+  implementations for third-party drivers). Without a key, behaviour is upstream's.
+- **Schema change for PostgreSQL and SQL Server**: the episodes table gets a nullable `idempotency_key` column and a
+  unique index `ux_episodes_group_id_idempotency_key` on (`group_id`, `idempotency_key`).
+  `BuildIndicesAndConstraintsAsync` adds both to a 0.1.0 database (it now adds any column a newer version added to an
+  existing table); hosts on EF Core migrations add a migration, see docs/postgresql.md and docs/sqlserver.md.
+- **Opt-in retry of transient provider errors**: `new Graphiti(..., modelCallRetry: new ModelCallRetryOptions())`
+  retries each LLM prompt, embedding and rerank call on a rate limit (HTTP 429), a 5xx, a timeout or a dropped
+  connection, with exponential backoff and jitter (`MaxAttempts`, `BaseDelay`, `MaxDelay`), honouring `Retry-After`.
+  Each LLM attempt rebuilds its prompt, tokens are counted once, and a model call gate is asked once per call. Off by
+  default, so behaviour stays upstream's. `RateLimitException.RetryAfter` carries a provider's requested wait.
+- **`StructuredOutputMode.JsonObjectGuided`** for `OpenAIGenericClient`: `json_object` output with a clearer prompt
+  (return the data, not the schema, plus an example object of the right shape), for providers such as DeepSeek whose
+  models sometimes echo upstream's bare schema back. `JsonObject` keeps upstream's text. See
+  [docs/api-compatibility.md](docs/api-compatibility.md#guided-json-output-for-providers-without-json_schema).
+
+### Changed
+
+- **PostgreSQL keyword search stays fast at a million records, common words included**, with exactly the same
+  results as before (and as the in-memory driver). Each keyword key now carries the term's impact class, so the GIN
+  index finds the rows where a term weighs most, and a search reads only the rows that can still reach its top results
+  (MaxScore by impact class, then a WAND-like pass over combinations of classes) instead of every row holding a common
+  word. Document frequencies, group sizes and the text search configurations in use come from a new
+  `search_term_counts` table kept by the statistics triggers, instead of counting through the GIN index (or scanning
+  the table) on every search. On a synthetic graph of 1M mostly Arabic records, queries made only of common words went
+  from about 1 s (one large tenant) and 2-3 s (all groups) to 20-40 ms and 45-60 ms at the median; no case of the
+  benchmark is slower than 96 ms at the median. See [the benchmark](docs/benchmarks/postgresql-keyword-search.md),
+  which `tools/GraphitiNet.Bench` reproduces. Bulk saves send one multi-row statement per batch; keeping the counts
+  still makes them about half as fast at that size, and a single save about 2 ms slower. Upgrading:
+  `BuildIndicesAndConstraintsAsync` (or `GraphitiSchemaSql.SearchStatistics` in a migration) converts the keyword
+  index of rows written by 0.1 once, rewriting each searchable row (12 minutes per million rows without embeddings);
+  searches stay exact on unconverted rows. See
+  [Upgrading from 0.1](docs/postgresql.md#upgrading-from-01).
+
+### Fixed
+
+- `OpenAIClient` and `OpenAIGenericClient` now ask the model call gate before each LLM call, put the prompt name in
+  `GraphitiCallContext`, and record their tokens in the operation's usage (`AddEpisodeResults.TokenUsage`). In 0.1.0
+  they skipped all three, because they override `GenerateResponseAsync`; only clients on the base implementation,
+  such as `ChatClientLLMClient`, honoured them.
+
+### Measured
+
+- **LongMemEval question answering on 102 questions** (17 per type), on PostgreSQL against Python Graphiti on Neo4j,
+  with DeepSeek `deepseek-flash` building and answering and `gpt-5.5` grading: graphiti-net 89/102, Python Graphiti
+  83/102 (7 questions right only with graphiti-net, 1 only with Python Graphiti). See
+  [the results](parity/results/2026-11-14-lme-qa-102.md).
+- **PostgreSQL keyword search at 1M mostly Arabic records**: see the Changed entry above and
+  [the benchmark](docs/benchmarks/postgresql-keyword-search.md).
+
 ## [0.1.0] - 2026-11-13
 
 The first release. Ported from Python Graphiti

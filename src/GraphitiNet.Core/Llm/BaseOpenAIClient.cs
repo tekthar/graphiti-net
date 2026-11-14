@@ -254,7 +254,12 @@ public abstract partial class BaseOpenAIClient : LLMClient
 
         messages[0].Content += GetExtractionLanguageInstruction(groupId);
 
+        // graphiti-net additions, as in LLMClient.GenerateResponseAsync: the prompt name in the call context, the
+        // operation's model call gate (asked once per logical call), and token usage per operation.
+        using var promptScope = GraphitiCallContext.BeginPrompt(promptName);
         using var activity = StartGenerateActivity(modelSize, resolvedMaxTokens, promptName);
+        await GraphitiCallContext.EnsureAllowedAsync(ModelCallKind.Llm, promptName, cancellationToken)
+            .ConfigureAwait(false);
 
         var retryCount = 0;
         while (true)
@@ -265,6 +270,7 @@ public abstract partial class BaseOpenAIClient : LLMClient
                     messages, responseModel, resolvedMaxTokens, modelSize, model, cancellationToken)
                     .ConfigureAwait(false);
                 TokenTracker.Record(promptName, response.InputTokens, response.OutputTokens);
+                GraphitiCallContext.Current?.Usage.Record(promptName, response.InputTokens, response.OutputTokens);
                 return response.Response;
             }
             catch (Exception e) when (e is RateLimitException or RefusalException or OperationCanceledException

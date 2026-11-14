@@ -182,6 +182,86 @@ public interface IEpisodeNodeOperations : INodeOperations<EpisodicNode>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The episode in <paramref name="groupId"/> whose <see cref="EpisodicNode.IdempotencyKey"/> is
+    /// <paramref name="idempotencyKey"/> (compared exactly, case-sensitive), or <see langword="null"/>. A graphiti-net
+    /// addition (tekthar/graphiti-net#9).
+    /// </summary>
+    /// <remarks>
+    /// <para>Every driver stores the key and keeps it unique per group: saving an episode whose key another episode of
+    /// its group already has fails (the exception is the backend's). Episodes without a key never collide.</para>
+    /// <para>The default implementation pages through <see cref="IRecordOperations{T}.GetByGroupIdsAsync"/>; backends
+    /// should override it with an indexed lookup.</para>
+    /// </remarks>
+    async Task<EpisodicNode?> GetByIdempotencyKeyAsync(
+        string groupId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(groupId);
+        ArgumentNullException.ThrowIfNull(idempotencyKey);
+        const int pageSize = 1000;
+        string? cursor = null;
+        while (true)
+        {
+            var page = await GetByGroupIdsAsync([groupId], pageSize, cursor, cancellationToken).ConfigureAwait(false);
+            if (page.FirstOrDefault(e => string.Equals(e.IdempotencyKey, idempotencyKey, StringComparison.Ordinal))
+                is { } found)
+            {
+                return found;
+            }
+
+            if (page.Count < pageSize)
+            {
+                return null;
+            }
+
+            cursor = page[^1].Uuid;
+        }
+    }
+
+    /// <summary>
+    /// Saves <paramref name="episode"/> unless another episode of its group already has its
+    /// <see cref="EpisodicNode.IdempotencyKey"/>, and returns the episode stored under the key: the given one when it
+    /// was saved, the existing one otherwise (the given one is then not saved). When several callers race with the
+    /// same key, exactly one episode is saved and every caller gets it back. A graphiti-net addition
+    /// (tekthar/graphiti-net#9).
+    /// </summary>
+    /// <remarks>The default implementation looks the key up, saves, and on a save failure (the unique constraint
+    /// refusing the losing writer) looks the key up again. It is only race-free on a backend whose save enforces the
+    /// unique constraint; backends should override it.</remarks>
+    /// <exception cref="ArgumentException">The episode has no idempotency key.</exception>
+    async Task<EpisodicNode> AddOrGetByIdempotencyKeyAsync(
+        EpisodicNode episode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(episode);
+        var key = episode.IdempotencyKey
+                  ?? throw new ArgumentException("The episode has no idempotency key.", nameof(episode));
+        if (await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false) is { } found)
+        {
+            return found;
+        }
+
+        try
+        {
+            await SaveAsync(episode, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            if (await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false) is
+                { } winner && winner.Uuid != episode.Uuid)
+            {
+                return winner;
+            }
+
+            throw;
+        }
+
+        return await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false)
+               ?? episode;
+    }
+
+    /// <summary>
     /// The episodes in a saga, oldest first (by <c>CreatedAt</c>, then <c>ValidAt</c>). With
     /// <paramref name="createdAfter"/>, only episodes created strictly after it. Replaces upstream's raw query in
     /// <c>Graphiti._saga_get_episode_contents</c>.

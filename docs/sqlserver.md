@@ -37,6 +37,14 @@ Core model a migration would use, so the two never disagree. It runs in one tran
 (`sp_getapplock`), so several app instances may call it at start-up. `BuildIndicesAndConstraintsAsync(deleteExisting:
 true)` drops the eleven tables first: **all graph data is lost**.
 
+On a database without the `vector` type (SQL Server 2022 or earlier, Azure SQL Edge), `BuildIndicesAndConstraintsAsync`
+throws `VectorStoreUnavailableException` (namespace `GraphitiNet.Driver`, `Reason` `NotSupported`) before it creates
+anything. Its message names the database, the server version, and the fix: SQL Server 2025, Azure SQL Database, or
+Azure SQL Managed Instance with the SQL Server 2025 or Always-up-to-date update policy. A host can show it to its
+administrator as it is. `await driver.CanHoldVectorsAsync()` answers the same question before setup without creating
+anything. (The type is a property of the engine: on SQL Server 2025 it is there at every database compatibility
+level.)
+
 Options:
 
 ```csharp
@@ -126,6 +134,29 @@ Teams that manage schemas with EF Core migrations don't need `BuildIndicesAndCon
 `BuildIndicesAndConstraintsAsync` and migrations produce the same tables. If you start with the former and move to
 migrations later, mark the initial migration as applied instead of running it.
 
+### Upgrading from 0.1.0
+
+The next release adds idempotency keys on episodes
+([#9](https://github.com/tekthar/graphiti-net/issues/9)): a nullable `idempotency_key nvarchar(255)` column (binary
+collation) on `episodes` and a unique index `ux_episodes_group_id_idempotency_key` on (`group_id`, `idempotency_key`),
+filtered on `[idempotency_key] IS NOT NULL` so rows without a key never collide. Existing rows need no change.
+
+- **`BuildIndicesAndConstraintsAsync`:** call it once after upgrading the package; it adds the column and the index to
+  an existing database. It is idempotent.
+- **EF Core migrations:** add a migration after upgrading (`dotnet ef migrations add GraphitiIdempotencyKeys`). It
+  contains, for your schema and prefix:
+
+  ```csharp
+  migrationBuilder.AddColumn<string>(
+      name: "idempotency_key", schema: "graphiti", table: "episodes", type: "nvarchar(255)", maxLength: 255,
+      collation: "Latin1_General_100_BIN2", nullable: true);
+  migrationBuilder.CreateIndex(
+      name: "ux_episodes_group_id_idempotency_key", schema: "graphiti", table: "episodes",
+      columns: new[] { "group_id", "idempotency_key" }, unique: true, filter: "[idempotency_key] IS NOT NULL");
+  ```
+
+  Until the migration is applied, every episode write fails with "Invalid column name 'idempotency_key'".
+
 ## Schema
 
 All tables live in `Schema`, named `TablePrefix` + the name below. Ids, group ids and edge endpoints are
@@ -136,7 +167,7 @@ Times are `datetimeoffset`, stored in UTC.
 
 | Table | Holds | Notable columns and indexes |
 | --- | --- | --- |
-| `episodes` | Episodes | `content`, `source`, `source_description`, `valid_at` (indexed with `group_id`), `entity_edges`, `episode_metadata` |
+| `episodes` | Episodes | `content`, `source`, `source_description`, `valid_at` (indexed with `group_id`), `entity_edges`, `episode_metadata`, `idempotency_key` (unique with `group_id`, filtered on not null) |
 | `entities` | Entities | `name`, `name_key` (a persisted SHA-256 of the name, indexed with `group_id` for exact-name lookups), `summary`, `labels`, `attributes`, `name_embedding vector(N)` |
 | `communities` | Communities | `name`, `summary`, `name_embedding vector(N)` |
 | `sagas` | Sagas | `name`, `name_key` (indexed with `group_id`), summary bookkeeping |
@@ -151,6 +182,12 @@ Times are `datetimeoffset`, stored in UTC.
 Every edge table has an index on (source, target) and one on target. Edges reference nodes by id without foreign
 keys, as in a graph database: deleting a node deletes every edge touching it, and their keyword index rows, in one
 transaction.
+
+`GraphitiSchema.Tables(options)` lists these eleven tables for a schema name and table prefix, without a database:
+each `GraphitiTable` has the `Schema`, the `Name` (with the prefix), the `QualifiedName` and the `RecordType` it holds
+(for the keyword index, `SearchTermRecord` and `SearchFieldRecord`). Use it for a data map, a backup or retention
+policy, or a test that lists the schema. It reads the same EF Core model `BuildIndicesAndConstraintsAsync` creates the
+tables from, and a test checks the two against each other.
 
 ## Embedding size
 
@@ -191,6 +228,54 @@ indexes populate asynchronously, so a fact saved a moment ago may not be found. 
 the same transaction as the record: one `search_terms` row per distinct term per field and one `search_fields` row per
 non-empty field, rewritten on every save and deleted with the record.
 
+## Several app servers: `SqlServerGroupLock`
+
+`Graphiti` runs one write at a time per group (see `IGroupLock` in [api-compatibility.md](api-compatibility.md)), but
+its default lock, `InProcessGroupLock.Shared`, works only within one process. When several app servers write to one
+database, give every `Graphiti` instance on every server a `SqlServerGroupLock`, with the driver's connection string
+and options:
+
+```csharp
+var options = new SqlServerGraphOptions { Schema = "graphiti", EmbeddingDimension = 1024 };
+var driver = new SqlServerDriver(connectionString, options);
+await using var graphiti = new Graphiti(
+    driver, llm, embedder, reranker,
+    groupLock: new SqlServerGroupLock(connectionString, options));
+
+// With dependency injection: one lock per process.
+services.AddSingleton<IGroupLock>(_ => new SqlServerGroupLock(connectionString, options));
+```
+
+- **How it locks.** Each group's lock is an exclusive application lock owned by the session (`sp_getapplock
+  @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = -1`), taken on a connection of its own with pooling
+  off, so it is released exactly when the operation ends (a pooled connection would keep it after going back to the
+  pool, or lose it to `sp_reset_connection`). One held group uses one connection; the operations of one process
+  waiting for one group queue in process and use none, so only the next in line waits in SQL Server. The wait has no
+  time limit. `sp_getapplock` reports failure in its return value: a negative value (timeout, cancelled, deadlock
+  victim, bad call) means the lock was not granted, and `AcquireAsync` throws `InvalidOperationException`.
+- **The resource.** `graphiti-net:` followed by 16 lower-case hex digits: the first 8 bytes of the SHA-256 of the
+  UTF-8 text `graphiti-net group lock\0{Schema}\0{TablePrefix}\0{groupId}` (the same key as `PostgresGroupLock`).
+  Including the schema and prefix keeps two graphs in one database apart; the hash keeps the name within the 255
+  characters `sp_getapplock` takes and the 32 that `sys.dm_tran_locks` shows. `ResourceFor(groupId)` returns it; it
+  is stable across versions, so servers on different graphiti-net versions still exclude each other. To see who
+  holds a group:
+
+  ```sql
+  SELECT l.request_session_id, s.program_name, s.host_name
+  FROM sys.dm_tran_locks l JOIN sys.dm_exec_sessions s ON s.session_id = l.request_session_id
+  WHERE l.resource_type = 'APPLICATION' AND l.request_status = 'GRANT'
+    AND l.resource_description LIKE '%graphiti-net:<hex>%';
+  ```
+- **Cancellation.** Cancelling the operation's token while it waits cancels the waiting request and closes the
+  connection; no connection and no lock is left behind.
+- **A dropped connection releases the lock.** If the holder's server dies, its session is killed or the network fails,
+  SQL Server ends the session and the next server goes ahead. The holder is not told and finishes its operation
+  unlocked; releasing afterwards does not throw.
+- **Not re-entrant.** As with the in-process lock, an operation must not start another write to a group it already
+  holds (for example from inside a model call): it would wait for itself until cancelled. Independent operations on
+  one group simply take turns. Operations over several groups take them in ordinal order on every server, so they
+  cannot deadlock.
+
 ## Performance notes
 
 - Reads never track entities and never select embeddings; each search is one round trip.
@@ -213,5 +298,18 @@ round trips and keyword search, exact collation, keyword index maintenance and r
 They read the connection string from `GRAPHITI_TEST_SQLSERVER` (default
 `Server=localhost,1433;Database=graphiti_sqlserver_tests;User Id=sa;Password=Graphiti_dev_Passw0rd;TrustServerCertificate=True`,
 the container above), create the database if it is missing, work in schemas of their own, and skip when the server is
-unreachable. The parity replay (`tests/GraphitiNet.Parity.Tests`) runs both datasets on SQL Server with the same
+unreachable. The `SqlServerGroupLock` tests (the shared `DistributedGroupLockTests`) run two lock objects and two
+`Graphiti` instances as two servers, cancel a wait, and `KILL` the holder's session.
+
+The `VectorStoreUnavailableException` test needs a SQL Server without the `vector` type, named by
+`GRAPHITI_TEST_SQLSERVER_NO_VECTOR` (it creates the database if missing), and skips without it; CI runs SQL Server 2022
+for it (lowering the compatibility level of a SQL Server 2025 database does not remove the type):
+
+```bash
+docker run -d --name mssql2022 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='Graphiti_dev_Passw0rd' \
+  -p 1434:1433 mcr.microsoft.com/mssql/server:2022-latest
+export GRAPHITI_TEST_SQLSERVER_NO_VECTOR="Server=localhost,1434;Database=graphiti_novector_tests;User Id=sa;Password=Graphiti_dev_Passw0rd;TrustServerCertificate=True"
+```
+
+The parity replay (`tests/GraphitiNet.Parity.Tests`) runs both datasets on SQL Server with the same
 variable.

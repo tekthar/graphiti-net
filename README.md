@@ -30,7 +30,7 @@ it came from.
 | Providers: OpenAI, Azure OpenAI, OpenAI-compatible, any Microsoft.Extensions.AI client | Works |
 | `AddEpisodeBulkAsync`, with combined extraction by default | Works; replayed against a recorded upstream `add_episode_bulk` run on every commit |
 | Graph building against Python Graphiti on LongMemEval | 100 messages: within upstream's own run-to-run variation ([results](parity/results/2026-11-12-lme-graph-building.md)) |
-| Question answering on LongMemEval against Python Graphiti | 24 questions: graphiti-net 21/24 (in memory and PostgreSQL), Python Graphiti 18/24 and 19/24 ([results](parity/results/2026-11-13-lme-qa.md)) |
+| Question answering on LongMemEval against Python Graphiti | 102 questions on PostgreSQL: graphiti-net 89/102, Python Graphiti 83/102 ([results](parity/results/2026-11-14-lme-qa-102.md)); 24 questions: graphiti-net 21/24, Python Graphiti 18/24 and 19/24 ([results](parity/results/2026-11-13-lme-qa.md)) |
 | DMR and LoCoMo benchmarks | Before 1.0 |
 | Consumer requirements (AbpAgent, issues #1 and #2) | Every criterion tested on both drivers ([acceptance](docs/acceptance.md)) |
 
@@ -163,6 +163,7 @@ The port follows **Graphiti [v0.31.2](https://github.com/getzep/graphiti/release
 
 - [API compatibility](docs/api-compatibility.md): every Python Graphiti call and its graphiti-net equivalent, and
   where behaviour differs.
+- [Feature parity](docs/feature-parity.md): every Graphiti feature, its graphiti-net status, and the release plan.
 - [How Graphiti works](docs/how-graphiti-works.md): episodes, entities, facts, time and search.
 - [PostgreSQL storage](docs/postgresql.md): setup, your own DbContext, migrations, embedding size, languages.
 - [SQL Server storage](docs/sqlserver.md): SQL Server 2025 and Azure SQL; setup, your own DbContext, keyword ranking.

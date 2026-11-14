@@ -7,9 +7,9 @@ tests/evals/eval_e2e_graph_building.py: episode body "role: content", reference 
 message, one group per question), search the question's group, answer with upstream's eval.qa_prompt from the search
 results only, and grade the answer against the gold answer with upstream's eval.eval_prompt (an LLM judge).
 
-  select <longmemeval_oracle.json> <questions.json> [per_type] [seed]
+  select <longmemeval_oracle.json> <questions.json> [per_type] [seed] [pool]
       Picks per_type questions (default 4) of each question type, at random with a fixed seed (default 42), among
-      the 12 with the fewest haystack messages. Abstention questions (ids ending in _abs) are left out.
+      the pool (default 12) with the fewest haystack messages. Abstention questions (ids ending in _abs) are left out.
   run    <longmemeval_oracle.json> <questions.json> <answers.json> [label]
       Python Graphiti v0.31.2 on Neo4j: ingest, search, answer. tools/GraphitiNet.Eval `qa` writes the same file
       shape for graphiti-net.
@@ -50,7 +50,8 @@ from graphiti_core import Graphiti
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 from graphiti_core.driver.neo4j_driver import Neo4jDriver
 from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
-from graphiti_core.llm_client import LLMConfig, OpenAIClient
+from graphiti_core.llm_client import LLMConfig, LLMClient, OpenAIClient
+from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
 from graphiti_core.nodes import EpisodeType
 from graphiti_core.prompts import prompt_library
 from graphiti_core.prompts.eval import EvalResponse, QAResponse
@@ -72,6 +73,95 @@ def llm_config(model: str | None = None) -> LLMConfig:
     return LLMConfig(model=model or default, small_model=os.environ.get('SMALL_LLM_MODEL', model or default))
 
 
+def schema_example(node, root: dict, depth: int = 0):
+    """A placeholder instance of a schema node; graphiti-net's ResponseModelSchema.Example is the same."""
+    if not isinstance(node, dict) or depth > 8:
+        return None
+    if '$ref' in node:
+        return schema_example(root.get('$defs', {}).get(node['$ref'].rsplit('/', 1)[-1]), root, depth + 1)
+    if 'const' in node:
+        return node['const']
+    if node.get('enum'):
+        return node['enum'][0]
+    for key in ('anyOf', 'oneOf', 'allOf'):
+        if key in node:
+            branch = next((b for b in node[key] if b.get('type') != 'null'), None)
+            return schema_example(branch, root, depth + 1)
+    kind = node.get('type')
+    if isinstance(kind, list):
+        kind = next((t for t in kind if t != 'null'), None)
+    elif kind is None and 'properties' in node:
+        kind = 'object'
+    if kind == 'string':
+        return '...'
+    if kind in ('integer', 'number'):
+        return 0
+    if kind == 'boolean':
+        return False
+    if kind == 'array':
+        return [schema_example(node['items'], root, depth + 1)] if isinstance(node.get('items'), dict) else []
+    if kind == 'object':
+        return {k: schema_example(v, root, depth + 1) for k, v in node.get('properties', {}).items()}
+    return None
+
+
+def guided_instruction(response_model) -> str:
+    """graphiti-net's StructuredOutputMode.JsonObjectGuided text, character for character."""
+    schema = response_model.model_json_schema()
+    return (
+        '\n\nRespond with one JSON object that follows the JSON Schema below. Return the data itself, not the '
+        'schema: the object\'s keys are the schema\'s "properties" (no "properties", "type", "title" or '
+        '"$defs" wrapper), every required key is present, and a list with nothing in it is [].'
+        f'\n\nJSON Schema:\n\n{json.dumps(schema)}'
+        f'\n\nThe shape of the answer, with placeholder values:\n\n{json.dumps(schema_example(schema, schema))}'
+    )
+
+
+class GuidedGenericClient(OpenAIGenericClient):
+    """Upstream's OpenAIGenericClient with graphiti-net's JsonObjectGuided instruction instead of upstream's
+    json_object text, so both implementations send the same prompts in a guided run."""
+
+    def __init__(self, config: LLMConfig):
+        # json_schema mode skips upstream's own schema text; the request still asks for json_object below.
+        super().__init__(config, structured_output_mode='json_schema')
+
+    def _build_response_format(self, response_model):
+        return {'type': 'json_object'}
+
+    async def generate_response(self, messages, response_model=None, *args, **kwargs):
+        if response_model is not None:
+            messages[-1].content += guided_instruction(response_model)
+        return await super().generate_response(messages, response_model, *args, **kwargs)
+
+
+def build_llm() -> LLMClient:
+    """The client that builds graphs and answers: OpenAI by default, or any OpenAI-compatible endpoint (DeepSeek,
+    vLLM, ...) through upstream's OpenAIGenericClient when LLM_BASE_URL is set. The grader always uses OpenAI."""
+    base_url = os.environ.get('LLM_BASE_URL')
+    if not base_url:
+        return OpenAIClient(llm_config())
+    config = llm_config()
+    config.base_url = base_url
+    config.api_key = os.environ.get('LLM_API_KEY', 'dummy')
+    mode = os.environ.get('LLM_STRUCTURED_OUTPUT', 'json_object')
+    client = (
+        GuidedGenericClient(config)
+        if mode == 'json_object_guided'
+        else OpenAIGenericClient(config, structured_output_mode=mode)
+    )
+    # Upstream's generic client does not record token usage; record it from each response so runs report tokens.
+    create = client.client.chat.completions.create
+
+    async def tracked(*args, **kwargs):
+        response = await create(*args, **kwargs)
+        if response.usage is not None:
+            client.token_tracker.record(None, response.usage.prompt_tokens, response.usage.completion_tokens)
+        return response
+
+    client.client.chat.completions.create = tracked
+    return client
+
+
 def qa_query(item: dict) -> str:
     """The question as qa_prompt receives it: the question and the date it was asked."""
     return f'{item["question"]} (asked on {item["question_date"]})'
@@ -81,7 +171,7 @@ def qa_context(query: str, facts: list[dict], entities: list[dict]) -> dict:
     return {'query': query, 'entity_summaries': entities, 'facts': facts}
 
 
-def select(dataset_path: str, out_path: str, per_type: int = 4, seed: int = 42) -> None:
+def select(dataset_path: str, out_path: str, per_type: int = 4, seed: int = 42, pool: int = 12) -> None:
     with open(dataset_path, encoding='utf-8') as f:
         data = json.load(f)
     by_type = defaultdict(list)
@@ -93,8 +183,9 @@ def select(dataset_path: str, out_path: str, per_type: int = 4, seed: int = 42) 
     rng = random.Random(seed)
     selected = []
     for question_type in sorted(by_type):
-        smallest = sorted(by_type[question_type])[:12]
-        selected += [qid for _, qid in sorted(rng.sample(smallest, per_type), key=lambda p: p[1])]
+        smallest = sorted(by_type[question_type])[:pool]
+        count = min(per_type, len(smallest))
+        selected += [qid for _, qid in sorted(rng.sample(smallest, count), key=lambda p: p[1])]
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump(selected, f, indent=2)
     print(f'{len(selected)} questions -> {out_path}')
@@ -127,7 +218,7 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
         # One client per question, so each question's token usage is its own.
         return Graphiti(
             graph_driver=driver,
-            llm_client=OpenAIClient(llm_config()),
+            llm_client=build_llm(),
             embedder=OpenAIEmbedder(embedder_config),
             cross_encoder=OpenAIRerankerClient(llm_config()),
         )
@@ -139,7 +230,27 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
     config.limit = SEARCH_LIMIT
     gate = asyncio.Semaphore(int(os.environ.get('QA_CONCURRENCY', '8')))
 
+    # Each finished question is appended to a checkpoint file, so a run stopped part way (quota, crash) resumes with
+    # the questions it has not answered yet.
+    checkpoint = out_path + '.partial.jsonl'
+    done: dict[str, dict] = {}
+    if os.path.exists(checkpoint):
+        with open(checkpoint, encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    row = json.loads(line)
+                    done[row['question_id']] = row
+        print(f'resuming: {len(done)} questions already answered', flush=True)
+
     async def one(item: dict) -> dict:
+        if item['question_id'] in done:
+            return done[item['question_id']]
+        answered = await one_attempts(item)
+        with open(checkpoint, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(answered, ensure_ascii=False) + '\n')
+        return answered
+
+    async def one_attempts(item: dict) -> dict:
         # A transient provider error (rate limit, 502) fails the whole add_episode, as in Graphiti itself; retry the
         # question from scratch in a fresh group rather than lose the run.
         for attempt in range(MAX_ATTEMPTS):
@@ -148,7 +259,10 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
             except Exception as e:  # noqa: BLE001 - any provider error; the last one is re-raised
                 if attempt == MAX_ATTEMPTS - 1:
                     raise
-                print(f'{item["question_id"]}: attempt {attempt + 1} failed ({type(e).__name__}); retrying', flush=True)
+                print(
+                    f'{item["question_id"]}: attempt {attempt + 1} failed ({type(e).__name__}: {str(e)[:500]}); retrying',
+                    flush=True,
+                )
                 await asyncio.sleep(30)
         raise AssertionError('unreachable')
 
@@ -208,10 +322,11 @@ async def run(dataset_path: str, ids_path: str, out_path: str, label: str = 'ups
     finally:
         await driver.close()
     write(out_path, {'implementation': 'graphiti 0.31.2 (Neo4j)', 'label': label, 'answers': answers})
+    os.remove(checkpoint)
     print(f'{len(answers)} questions in {time.perf_counter() - started:.0f}s -> {out_path}')
 
 
-async def answer_one(llm: OpenAIClient, query: str, facts: list[dict], entities: list[dict]) -> dict:
+async def answer_one(llm: LLMClient, query: str, facts: list[dict], entities: list[dict]) -> dict:
     messages = prompt_library.eval.qa_prompt(qa_context(query, facts, entities))
     prompt_system, prompt_user = messages[0].content, messages[1].content
     before = llm.token_tracker.get_total_usage()
@@ -233,7 +348,7 @@ async def answer(in_path: str, out_path: str) -> None:
 
     async def one(a: dict) -> dict:
         async with gate:
-            answered = await answer_one(OpenAIClient(llm_config()), a['qa_query'], a['facts'], a['entity_summaries'])
+            answered = await answer_one(build_llm(), a['qa_query'], a['facts'], a['entity_summaries'])
             return {**a, **answered}
 
     run_data['answers'] = await asyncio.gather(*[one(a) for a in run_data['answers']])

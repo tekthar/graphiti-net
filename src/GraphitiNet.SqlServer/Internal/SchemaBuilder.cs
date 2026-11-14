@@ -12,8 +12,8 @@ namespace GraphitiNet.Driver.SqlServer.Internal;
 
 /// <summary>
 /// Creates graphiti-net's schema from the EF Core model, so the DDL is exactly what an EF Core migration of the same
-/// model would produce. Idempotent: only missing tables are created (with their indexes), and indexes a newer version
-/// added are created on existing tables. Runs in one transaction under an application lock, so concurrent callers do
+/// model would produce. Idempotent: only missing tables are created (with their indexes), and columns and indexes a
+/// newer version added are created on existing tables. Runs in one transaction under an application lock, so concurrent callers do
 /// not race. SQL Server can still pick the build as a deadlock victim when its catalog reads and DDL cross another
 /// session's DDL (a host's migrations, for example); the build is idempotent and its transaction is rolled back, so it
 /// is retried from the start.
@@ -68,7 +68,6 @@ internal static class SchemaBuilder
         var operations = context.GetService<IMigrationsModelDiffer>().GetDifferences(null, model.GetRelationalModel());
         var sqlGenerator = context.GetService<IMigrationsSqlGenerator>();
         var schema = core.Options.Schema;
-        var names = core.Names;
 
         await context.Database.OpenConnectionAsync(ct).ConfigureAwait(false);
         try
@@ -97,11 +96,17 @@ internal static class SchemaBuilder
                     $"graphiti-net could not take the schema lock: sp_getapplock returned {lockResult}.");
             }
 
+            await VectorSupport.EnsureVectorTypeAsync(db, ct).ConfigureAwait(false);
+
+            // The graph and keyword index tables of the model: what GraphitiSchema.Tables lists, so the two cannot
+            // drift apart.
+            var ours = GraphitiSchema.ModelTables(model, schema).Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
             if (deleteExisting)
             {
-                foreach (var table in SqlNames.AllTables)
+                foreach (var table in ours)
                 {
-                    await ExecuteAsync(db, $"DROP TABLE IF EXISTS {names.Table(table)}", ct).ConfigureAwait(false);
+                    await ExecuteAsync(db, $"DROP TABLE IF EXISTS {SqlNames.Quote(schema)}.{SqlNames.Quote(table)}", ct)
+                        .ConfigureAwait(false);
                 }
             }
 
@@ -117,7 +122,6 @@ internal static class SchemaBuilder
                 schema,
                 ct).ConfigureAwait(false);
 
-            var ours = SqlNames.AllTables.Select(names.Name).ToHashSet(StringComparer.Ordinal);
             var created = new HashSet<string>(StringComparer.Ordinal);
             var selected = new List<MigrationOperation>();
             foreach (var operation in operations)
@@ -139,6 +143,22 @@ internal static class SchemaBuilder
                         break;
                 }
             }
+
+            // Columns a newer version added to existing tables (such as episodes.idempotency_key), before the indexes
+            // that use them.
+            var existingColumns = await ReadNamesAsync(
+                db,
+                "SELECT t.name + N'.' + c.name FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id "
+                + "JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = @schema",
+                schema,
+                ct).ConfigureAwait(false);
+            var addedColumns = operations.OfType<CreateTableOperation>()
+                .Where(t => t.Schema == schema && ours.Contains(t.Name) && existing.Contains(t.Name))
+                .SelectMany(t => t.Columns)
+                .Where(c => !existingColumns.Contains(c.Table + "." + c.Name))
+                .Cast<MigrationOperation>();
+            var firstIndex = selected.FindIndex(o => o is CreateIndexOperation);
+            selected.InsertRange(firstIndex < 0 ? selected.Count : firstIndex, addedColumns);
 
             foreach (var command in sqlGenerator.Generate(selected, model))
             {

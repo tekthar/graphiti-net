@@ -49,7 +49,14 @@ public static class GraphitiModelBuilderExtensions
             b.Property(e => e.ValidAt).HasColumnName("valid_at");
             b.Property(e => e.EntityEdges).HasColumnName("entity_edges");
             b.Property(e => e.EpisodeMetadata).HasColumnName("episode_metadata");
+            b.Property(e => e.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(IdLength)
+                .UseCollation(SqlServerGraphOptions.BinaryCollation);
             b.HasIndex(e => new { e.GroupId, e.ValidAt }).HasDatabaseName($"ix_{t}_group_id_valid_at");
+            // One episode per (group, key); filtered, so episodes without a key never collide.
+            b.HasIndex(e => new { e.GroupId, e.IdempotencyKey })
+                .IsUnique()
+                .HasFilter("[idempotency_key] IS NOT NULL")
+                .HasDatabaseName($"ux_{t}_group_id_idempotency_key");
             b.HasIndex(e => e.CreatedAt).HasDatabaseName($"ix_{t}_created_at");
         });
 

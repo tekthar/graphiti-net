@@ -12,8 +12,8 @@ namespace GraphitiNet.Driver.PostgreSql.Internal;
 
 /// <summary>
 /// Creates graphiti-net's schema from the EF Core model, so the DDL is exactly what an EF Core migration of the same
-/// model would produce. Idempotent: only missing tables are created (with their indexes), plus indexes and full-text
-/// columns a newer version added to existing tables, whose rows are then indexed. Runs in one transaction under an
+/// model would produce. Idempotent: only missing tables are created (with their indexes), plus columns, indexes and
+/// full-text columns a newer version added to existing tables, whose rows are then indexed. Runs in one transaction under an
 /// advisory lock, so concurrent callers do not race.
 /// </summary>
 internal static class SchemaBuilder
@@ -36,11 +36,23 @@ internal static class SchemaBuilder
             // One lock for every schema: CREATE EXTENSION itself is not safe to run concurrently.
             await ExecuteAsync(connection, "SELECT pg_advisory_xact_lock(hashtext('graphiti-net schema'))", ct)
                 .ConfigureAwait(false);
-            await ExecuteAsync(connection, "CREATE EXTENSION IF NOT EXISTS vector", ct).ConfigureAwait(false);
+            try
+            {
+                await ExecuteAsync(connection, VectorSupport.CreateExtensionSql, ct).ConfigureAwait(false);
+            }
+            catch (PostgresException e) when (VectorSupport.Unavailable(connection, e) is { } unavailable)
+            {
+                throw unavailable;
+            }
 
+            // The graph tables of the model: what GraphitiSchema.Tables lists, so the two cannot drift apart.
+            var ours = GraphitiSchema.ModelTables(model, schema).Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
             if (deleteExisting)
             {
-                var tables = string.Join(", ", SqlNames.AllTables.Append(SearchStatisticsSql.Table).Select(names.Table));
+                var tables = string.Join(
+                    ", ",
+                    ours.Concat(SearchStatisticsSql.Tables.Select(names.Name))
+                        .Select(t => $"{names.QuotedSchema}.{SqlNames.Quote(t)}"));
                 await ExecuteAsync(connection, $"DROP TABLE IF EXISTS {tables} CASCADE", ct).ConfigureAwait(false);
             }
 
@@ -63,7 +75,6 @@ internal static class SchemaBuilder
                     await DriverCore.ReadListAsync(command, r => r.GetString(0), ct).ConfigureAwait(false));
             }
 
-            var ours = SqlNames.AllTables.Select(names.Name).ToHashSet(StringComparer.Ordinal);
             var created = new HashSet<string>(StringComparer.Ordinal);
             var selected = new List<MigrationOperation>();
             foreach (var operation in operations)
@@ -117,6 +128,26 @@ internal static class SchemaBuilder
                         ct).ConfigureAwait(false);
                 }
             }
+
+            // Columns a newer version added to existing tables (such as episodes.idempotency_key), before the indexes
+            // that use them.
+            var existingColumns = new HashSet<(string Table, string Column)>();
+            await using (var command = new NpgsqlCommand(
+                "SELECT table_name::text, column_name::text FROM information_schema.columns WHERE table_schema = $1",
+                connection))
+            {
+                command.Parameters.Add(Params.Text(schema));
+                existingColumns.UnionWith(await DriverCore.ReadListAsync(
+                    command, r => (r.GetString(0), r.GetString(1)), ct).ConfigureAwait(false));
+            }
+
+            var addedColumns = operations.OfType<CreateTableOperation>()
+                .Where(t => t.Schema == schema && ours.Contains(t.Name) && existing.Contains(t.Name))
+                .SelectMany(t => t.Columns)
+                .Where(c => !existingColumns.Contains((c.Table, c.Name)))
+                .Cast<MigrationOperation>();
+            var firstIndex = selected.FindIndex(o => o is CreateIndexOperation);
+            selected.InsertRange(firstIndex < 0 ? selected.Count : firstIndex, addedColumns);
 
             foreach (var command in sqlGenerator.Generate(selected, model))
             {

@@ -31,6 +31,54 @@ internal sealed class InMemoryStore
 
     public Dictionary<string, NextEpisodeEdge> NextEpisodeEdges { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The unique index on (group, idempotency key) of the database drivers: throws if saving
+    /// <paramref name="episodes"/> would give two episodes of one group the same key. Called with the lock held, before
+    /// anything is written.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Another episode in the group has the key.</exception>
+    public void CheckIdempotencyKeys(IReadOnlyList<EpisodicNode> episodes)
+    {
+        var claimed = new Dictionary<(string Group, string Key), string>();
+        foreach (var episode in episodes)
+        {
+            if (episode.IdempotencyKey is not { } key)
+            {
+                continue;
+            }
+
+            if (claimed.TryGetValue((episode.GroupId, key), out var other) && other != episode.Uuid)
+            {
+                throw DuplicateKey(episode.GroupId, key);
+            }
+
+            claimed[(episode.GroupId, key)] = episode.Uuid;
+        }
+
+        if (claimed.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var stored in Episodes.Values)
+        {
+            if (stored.IdempotencyKey is { } key
+                && claimed.TryGetValue((stored.GroupId, key), out var uuid)
+                && uuid != stored.Uuid)
+            {
+                throw DuplicateKey(stored.GroupId, key);
+            }
+        }
+
+        static InvalidOperationException DuplicateKey(string group, string key) =>
+            new($"Another episode in group '{group}' already has the idempotency key '{key}'.");
+    }
+
+    /// <summary>The episode in the group with this idempotency key, or <see langword="null"/>.</summary>
+    public EpisodicNode? EpisodeByIdempotencyKey(string groupId, string key) =>
+        Episodes.Values.FirstOrDefault(e =>
+            e.GroupId == groupId && string.Equals(e.IdempotencyKey, key, StringComparison.Ordinal));
+
     /// <summary>Removes every edge, of any type, that starts or ends at <paramref name="nodeUuid"/>.</summary>
     public void RemoveEdgesTouching(string nodeUuid)
     {
@@ -127,6 +175,7 @@ internal static class RecordCopies
         ValidAt = node.ValidAt.ToUniversalTime(),
         EntityEdges = [.. node.EntityEdges],
         EpisodeMetadata = node.EpisodeMetadata is null ? null : CopyValues(node.EpisodeMetadata),
+        IdempotencyKey = node.IdempotencyKey,
     };
 
     public static EntityNode Copy(EntityNode node, bool includeEmbedding) => new()

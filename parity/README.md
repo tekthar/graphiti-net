@@ -56,8 +56,9 @@ differs between Lucene and graphiti-net's drivers (and between upstream runs: Lu
 documents until segments merge). The replay accepts a prompt whose only difference is the order of an indexed
 candidate list and translates the recorded answer's indexes; a different set of candidates still fails.
 
-Question answering on LongMemEval (24 questions, upstream's `qa_prompt` and `eval_prompt`): graphiti-net 21/24 in
-memory and on PostgreSQL, Python Graphiti 18/24 and 19/24 ([results](results/2026-11-13-lme-qa.md)).
+Question answering on LongMemEval (upstream's `qa_prompt` and `eval_prompt`): on 102 questions, graphiti-net on
+PostgreSQL 89/102 and Python Graphiti 83/102 ([results](results/2026-11-14-lme-qa-102.md)); on 24 questions, graphiti-net
+21/24 in memory and on PostgreSQL, Python Graphiti 18/24 and 19/24 ([results](results/2026-11-13-lme-qa.md)).
 
 ## Datasets
 
@@ -114,6 +115,15 @@ python -I parity/python/lme_qa.py report *.graded.json
 
 `lme_qa.py answer` and `GraphitiNet.Eval qa-answer` answer again from a run's stored contexts, without ingesting or
 searching, as a control for the answering stage alone.
+
+Both `run` commands save each answered question to `<answers.json>.partial.jsonl` as they go. Running the same command
+again after a run stopped part way (out of quota, a crash) skips the questions already answered and continues with the
+rest. The file is removed when the run completes.
+
+To build and answer with another OpenAI-compatible provider, set `LLM_BASE_URL` (for example
+`https://api.deepseek.com/v1`), `LLM_MODEL`, and `LLM_API_KEY` if the endpoint needs one. Both harnesses then use
+`OpenAIGenericClient` (upstream's and graphiti-net's) with `json_object` structured output (`LLM_STRUCTURED_OUTPUT=json_schema`
+for servers that support it, `json_object_guided` for graphiti-net's clearer instruction, sent by both). Embeddings and the grader stay on OpenAI.
 
 ## Differential tests
 

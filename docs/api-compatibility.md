@@ -46,6 +46,7 @@ graphiti-net has no graph database. **Neo4j, FalkorDB, Amazon Neptune and Kuzu a
 | (none) | `IGroupLock? groupLock = null` | graphiti-net addition, see below |
 | (none) | `IModelCallGate? modelCallGate = null` | graphiti-net addition, see below |
 | (none) | `ILogger? logger = null` | upstream logs through `logging` |
+| (none) | `ModelCallRetryOptions? modelCallRetry = null` | graphiti-net addition: retries transient provider errors, see below |
 
 ### Properties
 
@@ -68,7 +69,7 @@ graphiti-net has no graph database. **Neo4j, FalkorDB, Amazon Neptune and Kuzu a
 | --- | --- |
 | `await close()` | `await CloseAsync()` or `await DisposeAsync()` |
 | `build_indices_and_constraints(delete_existing=False)` | `BuildIndicesAndConstraintsAsync(deleteExisting = false)` |
-| `add_episode(name, episode_body, source_description, reference_time, source=EpisodeType.message, group_id=None, uuid=None, update_communities=False, entity_types=None, excluded_entity_types=None, previous_episode_uuids=None, edge_types=None, edge_type_map=None, custom_extraction_instructions=None, saga=None, saga_previous_episode_uuid=None)` | `AddEpisodeAsync(name, episodeBody, sourceDescription, referenceTime, source = EpisodeType.Message, groupId = null, uuid = null, updateCommunities = false, entityTypes = null, excludedEntityTypes = null, previousEpisodeUuids = null, edgeTypes = null, edgeTypeMap = null, customExtractionInstructions = null, saga = null, sagaPreviousEpisodeUuid = null, episodeMetadata = null, cancellationToken)` → `AddEpisodeResults` |
+| `add_episode(name, episode_body, source_description, reference_time, source=EpisodeType.message, group_id=None, uuid=None, update_communities=False, entity_types=None, excluded_entity_types=None, previous_episode_uuids=None, edge_types=None, edge_type_map=None, custom_extraction_instructions=None, saga=None, saga_previous_episode_uuid=None)` | `AddEpisodeAsync(name, episodeBody, sourceDescription, referenceTime, source = EpisodeType.Message, groupId = null, uuid = null, updateCommunities = false, entityTypes = null, excludedEntityTypes = null, previousEpisodeUuids = null, edgeTypes = null, edgeTypeMap = null, customExtractionInstructions = null, saga = null, sagaPreviousEpisodeUuid = null, episodeMetadata = null, idempotencyKey = null, cancellationToken)` → `AddEpisodeResults` |
 | `add_episode_bulk(bulk_episodes, group_id=None, entity_types=None, excluded_entity_types=None, edge_types=None, edge_type_map=None, strict_edge_types=False, custom_extraction_instructions=None, saga=None, use_combined_extraction=True)` | `AddEpisodeBulkAsync(bulkEpisodes, groupId, entityTypes, excludedEntityTypes, edgeTypes, edgeTypeMap, strictEdgeTypes = false, customExtractionInstructions, saga, useCombinedExtraction = true, cancellationToken)` → `AddBulkEpisodeResults` |
 | `add_triplet(source_node, edge, target_node, episode=None)` | `AddTripletAsync(sourceNode, edge, targetNode, episode = null)` → `AddTripletResults` |
 | `retrieve_episodes(reference_time, last_n=EPISODE_WINDOW_LEN, group_ids=None, source=None, saga=None)` | `RetrieveEpisodesAsync(referenceTime, lastN = Graphiti.EpisodeWindowLen, groupIds, source, saga)` |
@@ -96,7 +97,7 @@ Constants: `EPISODE_WINDOW_LEN` → `Graphiti.EpisodeWindowLen`; `SAGA_SUMMARY_M
 | `edge_type_map: dict[tuple[str, str], list[str]]` | `IReadOnlyDictionary<(string Source, string Target), IReadOnlyList<string>>`, for example `{ [("Person", "Company")] = ["WORKS_AT"] }` |
 | `excluded_entity_types: list[str]` | `IReadOnlyList<string>` |
 | `saga: str \| SagaNode` | `SagaReference`, which converts implicitly from a `string` name or a `SagaNode` |
-| `RawEpisode(name, uuid, content, source_description, source, reference_time)` | `RawEpisode { Name, Uuid, Content, SourceDescription, Source, ReferenceTime, EpisodeMetadata }` |
+| `RawEpisode(name, uuid, content, source_description, source, reference_time)` | `RawEpisode { Name, Uuid, Content, SourceDescription, Source, ReferenceTime, EpisodeMetadata, IdempotencyKey }` |
 | `EntityTypeValidationError`, `ValueError` from validation | `EntityTypeValidationException`, `ArgumentException` (same message) |
 | `NodeNotFoundError`, `EdgeNotFoundError` | `NodeNotFoundException`, `EdgeNotFoundException` |
 | `GroupIdValidationError` | `GroupIdValidationException` |
@@ -105,7 +106,7 @@ Constants: `EPISODE_WINDOW_LEN` → `Graphiti.EpisodeWindowLen`; `SAGA_SUMMARY_M
 
 | Upstream | graphiti-net |
 | --- | --- |
-| `AddEpisodeResults(episode, episodic_edges, nodes, edges, communities, community_edges)` | `AddEpisodeResults { Episode, EpisodicEdges, Nodes, Edges, Communities, CommunityEdges, TokenUsage, TokenUsageByPrompt }` |
+| `AddEpisodeResults(episode, episodic_edges, nodes, edges, communities, community_edges)` | `AddEpisodeResults { Episode, EpisodicEdges, Nodes, Edges, Communities, CommunityEdges, TokenUsage, TokenUsageByPrompt, Replayed }` |
 | `AddBulkEpisodeResults(episodes, ...)` | `AddBulkEpisodeResults { Episodes, EpisodicEdges, Nodes, Edges, Communities, CommunityEdges, TokenUsage, TokenUsageByPrompt }` |
 | `AddTripletResults(nodes, edges)` | `AddTripletResults { Nodes, Edges }` |
 | `SearchResults(edges, edge_reranker_scores, nodes, node_reranker_scores, episodes, episode_reranker_scores, communities, community_reranker_scores)` | `SearchResults { Edges, EdgeRerankerScores, Nodes, NodeRerankerScores, Episodes, EpisodeRerankerScores, Communities, CommunityRerankerScores, NodeEpisodeUuids }`; `SearchResults.merge` → `SearchResults.Merge` |
@@ -331,7 +332,9 @@ These are opt-in or additive; with the defaults, behaviour matches upstream exce
 whole call, so two episodes added to one group at once cannot both create the same entity. The
 default `InProcessGroupLock.Shared` works within one process (shared by every `Graphiti` instance in it). Pass your own
 `IGroupLock` (`ValueTask<IAsyncDisposable> AcquireAsync(string groupId, CancellationToken)`) for a distributed lock
-when several servers write to one database, or `NoGroupLock.Instance` for upstream's behaviour.
+when several servers write to one database (the drivers ship `PostgresGroupLock` and `SqlServerGroupLock`; see
+[drivers.md](drivers.md#several-app-servers-a-group-lock-per-database)), or `NoGroupLock.Instance` for upstream's
+behaviour.
 
 ### Call context on every model call (`GraphitiCallContext`)
 
@@ -356,6 +359,72 @@ a refused episode stays saved but unprocessed; process it later with `AddEpisode
 exception.EpisodeUuid)`, which reuses the stored content. Without a gate nothing is saved until the end, as upstream.
 The `CancellationToken` is checked between pipeline steps.
 
+### Idempotency keys on episodes
+
+`AddEpisodeAsync(..., idempotencyKey: "...")` and `RawEpisode.IdempotencyKey` let a host retry a failed call without a
+second episode, and without looking the episode up first (upstream's way out is to find the saved episode and pass its
+`uuid`). The key is stored as `EpisodicNode.IdempotencyKey`, unique per group (at most
+`Graphiti.MaxIdempotencyKeyLength`, 255, characters; compared exactly), and cannot be combined with `uuid`. With a key,
+the episode is saved under it before any model call. A later call with the same key in the group:
+
+| Earlier call | This call |
+| --- | --- |
+| none | creates the episode, as without a key |
+| saved the episode, failed before its entities and facts were saved (extraction, deduplication, resolution, a refused model call) | processes the stored episode (its stored name, content, source, reference time and metadata; the other content arguments are ignored, as with `uuid`) |
+| saved its entities and facts (they are saved with the episode in one transaction) | extracts nothing: returns the stored episode, entities, facts and mentions with `AddEpisodeResults.Replayed = true` and no token usage, joins the saga if the earlier call did not get to it, and updates communities when `updateCommunities` is set |
+
+An episode counts as processed once it mentions an entity or states a fact; one from which nothing was extracted is
+processed again, which cannot duplicate anything. In `AddEpisodeBulkAsync`, processed episodes are left out of
+extraction and returned with what is stored for them, the others are processed with the batch, and a saga gets only
+the episodes it does not have yet; keys must be distinct within a batch.
+
+Concurrency: the unique index on (group, key) decides, so two concurrent calls with one key create one episode
+(`IEpisodeNodeOperations.AddOrGetByIdempotencyKeyAsync` saves the episode or returns the one that holds the key).
+Under the default group lock the second call waits and then replays the first call's result. Without a lock shared by
+both callers (`NoGroupLock`, or several servers with the in-process lock) both may process the one episode, so use a
+distributed `IGroupLock` there. Without a key, behaviour is upstream's. Existing PostgreSQL and SQL Server databases
+get the new column and index from `BuildIndicesAndConstraintsAsync`; EF Core migration users add a migration (see
+[postgresql.md](postgresql.md#upgrading-from-01) and [sqlserver.md](sqlserver.md#upgrading-from-010)).
+
+### Retrying transient provider errors (`ModelCallRetryOptions`)
+
+In upstream a rate limit (HTTP 429), a 5xx or a timeout that outlasts the client's own retries fails the whole
+`add_episode`. `new Graphiti(..., modelCallRetry: new ModelCallRetryOptions())` retries each LLM prompt, embedding and
+rerank call a `Graphiti` operation makes, with exponential backoff and jitter. Off by default, so behaviour stays
+upstream's.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `MaxAttempts` | 4 | attempts per call, including the first |
+| `BaseDelay` | 1 s | backoff before the second attempt, doubling after; each wait is drawn between half the backoff and all of it |
+| `MaxDelay` | 60 s | the longest wait, also for a `Retry-After` |
+| `RespectRetryAfter` | `true` | wait as long as the provider asks (`Retry-After` or `retry-after-ms` header of a `ClientResultException`, or `RateLimitException.RetryAfter`), capped at `MaxDelay` |
+| `ShouldRetry` | `ModelCallRetryOptions.IsTransient` | which errors are retried: `RateLimitException`, HTTP 408, 429 and 5xx, connection failures, timeouts (inner exceptions too); not malformed or empty answers, refusals or a refused gate |
+| `TimeProvider` | system clock | for tests |
+
+- Each LLM attempt rebuilds the prompt, so nothing a failed attempt appended (such as `BaseOpenAIClient`'s
+  "previous response attempt was invalid" re-prompt, which only handles invalid answers and never sees a 429) carries
+  over.
+- Token usage is recorded once, by the attempt that succeeds.
+- A model call gate is asked once per logical call; retries of an allowed call are not asked again, and a refusal is
+  never retried.
+- Cancellation stops the wait between attempts; a cancelled call is not retried.
+- The policy sits above the clients' own retries, which stay as upstream's: the base `LLMClient`
+  (`ChatClientLLMClient`, `OpenAIGenericClient`) retries rate limits and 5xx errors itself, 4 attempts 5 to 120
+  seconds apart, and the OpenAI SDK retries 429 and 5xx responses. Attempts multiply; lower one layer if needed.
+
+### Guided JSON output for providers without `json_schema`
+
+`OpenAIGenericClient`'s `StructuredOutputMode.JsonObject` puts the response model's JSON Schema in the prompt under
+"Respond with a JSON object in the following format", as upstream's `json_object` mode does. Some models (seen with
+DeepSeek) answer with the schema's shape, such as `{"properties": {"duplicate_facts": ...}}`, which fails validation.
+`StructuredOutputMode.JsonObjectGuided` sends `json_object` too, but appends a plainer instruction: return the data,
+not the schema, then the schema, then an example object of the right shape with placeholder values (for
+`EdgeDuplicate`, `{"duplicate_facts": [0], "contradicted_facts": [0]}`). Opt in with
+`new OpenAIGenericClient(config, structuredOutputMode: StructuredOutputMode.JsonObjectGuided)`; `JsonObject` keeps
+upstream's text. `parity/python/lme_qa.py` sends the same text from upstream's client when
+`LLM_STRUCTURED_OUTPUT=json_object_guided`, and a test checks the two match character for character.
+
 ### Strict episode removal and clearing a group
 
 `RemoveEpisodeAsync(episodeUuid, strict: true)` leaves no text from the episode in the graph: every fact listing the
@@ -371,6 +440,39 @@ Both `SearchAsync` overloads and `SearchAdvancedAsync` take `IEpisodeAccessFilte
 search hides facts, entities and episodes behind episodes the caller may not read, before reranking and the limit, so
 the limit is filled from visible results; communities are not returned. `SearchResults.NodeEpisodeUuids` says which
 episodes stand behind each entity. See `GraphitiNet.Search.IEpisodeAccessFilter` for the rules.
+
+### Reads that apply the episode access filter
+
+Upstream's read methods (`Nodes.*` and `Edges.*`: `GetByGroupIdsAsync`, `GetByUuidsAsync`, `GetByNodeUuidAsync`,
+`RetrieveEpisodesAsync`) do not take the filter. For a host that shows users the graph, `Graphiti` adds reads that
+apply it with the same rules as search (the code is shared, so the two cannot disagree):
+
+| Method | Returns | Without a filter, the same as |
+|---|---|---|
+| `GetGroupGraphAsync(groupId, episodeAccessFilter, limit, cursor)` | `GroupGraphPage`: up to `limit` visible entities and the visible facts that start at the entities the page scanned | `Nodes.Entity.GetByGroupIdsAsync([groupId], limit, cursor)`, with each entity's outgoing facts from `Edges.Entity.GetByNodeUuidAsync` |
+| `GetFactsByNodeUuidAsync(nodeUuid, episodeAccessFilter)` | the visible facts that start or end at an entity | `Edges.Entity.GetByNodeUuidAsync(nodeUuid)` |
+| `GetGroupEpisodesAsync(groupId, episodeAccessFilter, limit, cursor)` | `RecordPage<EpisodicNode>`: up to `limit` readable episodes | `Nodes.Episode.GetByGroupIdsAsync([groupId], limit, cursor)` |
+
+A fact is visible only if every episode it came from is readable; an entity is judged by the episodes in its group
+that mention it (`EntityVisibility`); an episode only if it is readable. Facts and entities are judged separately, as
+in search, so a visible fact can point at a hidden entity, and a hidden entity's visible facts are still returned.
+
+Paging is by descending id with an id cursor, as the driver contract, and stays stable under filtering: a page holds
+up to `limit` *visible* records, and `NextCursor` is the id of the last record *scanned*, visible or not. The read
+fetches underlying pages (`limit * EpisodeAccess.CandidateMultiplier` at a time with a filter) until the page is full
+or the records run out, so only the last page can be short (and may be empty), and records added or removed between
+calls are never returned twice or skip others. Each fact appears on exactly one page of the group graph, the page
+that scanned its source entity. The same reads are available over any `IGraphDriver` as
+`GraphitiNet.Search.VisibleReads`.
+
+### A cross-encoder that does not rerank (`PassThroughCrossEncoderClient`)
+
+`Graphiti` still defaults to `OpenAIRerankerClient` when no cross-encoder is given, as upstream. A host without an
+OpenAI account, or that ranks with reciprocal rank fusion alone, can pass `PassThroughCrossEncoderClient.Instance`
+(`GraphitiNet.CrossEncoder`): it returns the passages in the order given, the passage at rank `i` (from 0) scoring
+`1 / (i + 1)`. Facts and episodes reach the cross-encoder in RRF order, so their cross-encoder rerankers then return
+exactly the RRF result. Entities and communities reach it, as upstream, in the order the search methods found them;
+that equals the RRF order with one search method. `RerankerMinScore` applies to the rank scores.
 
 ### Other
 

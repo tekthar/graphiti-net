@@ -132,8 +132,8 @@ public sealed class PostgresSearchTests : IAsyncLifetime
         await using (var reader = await command.ExecuteReaderAsync())
         {
             await reader.ReadAsync();
-            Assert.Equal(10L, reader.GetInt64(0));
-            Assert.Equal(10L, reader.GetInt64(1));
+            Assert.Equal(11L, reader.GetInt64(0));
+            Assert.Equal(11L, reader.GetInt64(1));
         }
 
         Assert.Single(await driver.EntityNodeOps.GetByGroupIdsAsync([Group]));

@@ -47,8 +47,14 @@ public static class GraphitiModelBuilderExtensions
             b.Property(e => e.ValidAt).HasColumnName("valid_at");
             b.Property(e => e.EntityEdges).HasColumnName("entity_edges");
             b.Property(e => e.EpisodeMetadata).HasColumnName("episode_metadata").HasColumnType("jsonb");
+            // Byte-order collation: keys compare exactly, as in every driver.
+            b.Property(e => e.IdempotencyKey).HasColumnName("idempotency_key").UseCollation("C");
             ConfigureSearch(b, t);
             b.HasIndex(e => new { e.GroupId, e.ValidAt }).HasDatabaseName($"ix_{t}_group_id_valid_at");
+            // One episode per (group, key); rows without a key never collide (NULLs are distinct).
+            b.HasIndex(e => new { e.GroupId, e.IdempotencyKey })
+                .IsUnique()
+                .HasDatabaseName($"ux_{t}_group_id_idempotency_key");
             b.HasIndex(e => e.CreatedAt).HasDatabaseName($"ix_{t}_created_at");
         });
 
@@ -134,8 +140,8 @@ public static class GraphitiModelBuilderExtensions
     /// The full-text columns, as shadow properties (only the driver's SQL reads or writes them):
     /// <c>text_search_config</c> (<c>regconfig</c>), the row's text search configuration;
     /// <c>search_terms</c> (<c>jsonb</c>), each term of the searchable fields mapped to its frequency in each field;
-    /// <c>search_keys</c> (<c>text[]</c>), each field's distinct terms as <c>field:term</c>, with a GIN index that
-    /// finds (and counts) the rows containing a query term; and <c>search_lengths</c> (<c>integer[]</c>), the number
+    /// <c>search_keys</c> (<c>text[]</c>), each field's distinct terms with their impact class as
+    /// <c>field:term|class</c>, with a GIN index that finds the rows where a query term weighs at least so much; and <c>search_lengths</c> (<c>integer[]</c>), the number
     /// of terms in each field. The driver computes them when it writes a row, so BM25 can be scored in SQL.
     /// <see langword="null"/> means not indexed yet (a row written outside the driver);
     /// <c>BuildIndicesAndConstraintsAsync</c> fills them in.

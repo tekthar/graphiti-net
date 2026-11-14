@@ -65,6 +65,9 @@ public sealed class EpisodeRecord : NodeRecord
 
     /// <summary>Caller metadata as a JSON object, or <see langword="null"/>.</summary>
     public string? EpisodeMetadata { get; set; }
+
+    /// <summary>The host's idempotency key, unique per group, or <see langword="null"/>.</summary>
+    public string? IdempotencyKey { get; set; }
 }
 
 /// <summary>An entity row (<c>entities</c>).</summary>

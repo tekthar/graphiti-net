@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See LICENSE.
 
 using GraphitiNet.Driver.InMemory;
+using GraphitiNet.Driver.PostgreSql.Internal;
 using GraphitiNet.Models;
 using GraphitiNet.Search;
 using Npgsql;
@@ -195,6 +196,152 @@ public sealed class PostgresBm25Tests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task Queries_of_common_words_only_rank_as_a_full_pass_would()
+    {
+        // Common words in most rows, in several groups: the impact-class passes read few of them, and must still
+        // return exactly the in-memory driver's ranking, with groups, filters, repeated words and ties.
+        var postgres = await CreateAsync();
+        var memory = new InMemoryGraphDriver();
+        var random = new Random(17);
+        string[] groups = ["big", "big-2", "small"];
+        string GroupOf(int i) => i % 10 < 6 ? groups[0] : i % 10 < 9 ? groups[1] : groups[2];
+        var entities = Enumerable.Range(0, 5000)
+            .Select(i => Entity(Text(random, 1 + random.Next(3)), GroupOf(i), summary: Text(random, random.Next(40)),
+                labels: i % 3 == 0 ? ["Entity", "Person"] : ["Entity"], uuid: $"e-{i:D4}"))
+            .ToList();
+        // A few exact duplicates, so that ties are broken by uuid across the passes.
+        entities.AddRange(Enumerable.Range(0, 20).Select(i =>
+            Entity(entities[i].Name, entities[i].GroupId, summary: entities[i].Summary, uuid: $"e-dup-{i:D2}")));
+        var facts = Enumerable.Range(0, 6000)
+            .Select(i => Fact(entities[i % 5000], entities[(i * 7) % 5000], Text(random, 3 + random.Next(20)),
+                name: i % 4 == 0 ? "KNOWS" : "LIKES", group: GroupOf(i), validAt: T0.AddDays(i % 100)))
+            .ToList();
+        foreach (IGraphDriver driver in new IGraphDriver[] { postgres, memory })
+        {
+            await driver.EntityNodeOps.SaveBulkAsync(entities);
+            await driver.EntityEdgeOps.SaveBulkAsync(facts);
+        }
+
+        var people = new SearchFilters { NodeLabels = ["Person"] };
+        var recent = new SearchFilters
+        {
+            ValidAt = [[new DateFilter { Date = T0.AddDays(50), ComparisonOperator = ComparisonOperator.GreaterThanEqual }]],
+        };
+        IReadOnlyList<string>?[] groupSets = [["big"], ["small"], ["big-2", "small"], null];
+        var pruned = Interlocked.Read(ref KeywordPlan.PrunedSearches);
+        for (var i = 0; i < 24; i++)
+        {
+            // The commonest words only, sometimes repeated, sometimes with one mid-frequency word.
+            var words = Enumerable.Range(0, 1 + random.Next(4)).Select(_ => Vocabulary[random.Next(4)]).ToList();
+            if (i % 4 == 3)
+            {
+                words.Add(Vocabulary[10 + random.Next(20)]);
+            }
+
+            var query = string.Join(' ', words);
+            foreach (var groupIds in groupSets)
+            {
+                var limit = i % 3 == 0 ? 1 : 10;
+                var because = $"query \"{query}\", groups {(groupIds is null ? "all" : string.Join(",", groupIds))}";
+                Assert.True(
+                    Ids(await memory.SearchOps.NodeFulltextSearchAsync(query, SearchFilters.None, groupIds, limit))
+                        .SequenceEqual(Ids(await postgres.SearchOps.NodeFulltextSearchAsync(query, SearchFilters.None, groupIds, limit))),
+                    "entities: " + because);
+                Assert.True(
+                    Ids(await memory.SearchOps.NodeFulltextSearchAsync(query, people, groupIds, limit))
+                        .SequenceEqual(Ids(await postgres.SearchOps.NodeFulltextSearchAsync(query, people, groupIds, limit))),
+                    "people: " + because);
+                Assert.True(
+                    Ids(await memory.SearchOps.EdgeFulltextSearchAsync(query, SearchFilters.None, groupIds, limit))
+                        .SequenceEqual(Ids(await postgres.SearchOps.EdgeFulltextSearchAsync(query, SearchFilters.None, groupIds, limit))),
+                    "facts: " + because);
+                Assert.True(
+                    Ids(await memory.SearchOps.EdgeFulltextSearchAsync(query, recent, groupIds, limit))
+                        .SequenceEqual(Ids(await postgres.SearchOps.EdgeFulltextSearchAsync(query, recent, groupIds, limit))),
+                    "recent facts: " + because);
+            }
+        }
+
+        // Not vacuous: some of these searches were answered without reading every row with a query term.
+        Assert.True(Interlocked.Read(ref KeywordPlan.PrunedSearches) > pruned);
+    }
+
+    [PostgresFact]
+    public async Task Bulk_saves_write_many_rows_per_statement_and_keep_the_last_of_a_uuid()
+    {
+        // Three rows per statement: the duplicate falls in the same statement as its first version, then in another.
+        var postgres = await CreateAsync(new PostgresGraphOptions { BulkBatchSize = 3 });
+        var memory = new InMemoryGraphDriver();
+        var batch = new List<EntityNode>
+        {
+            Entity("Alice", summary: "first version", uuid: "d-1"),
+            Entity("Bob", summary: "bob", uuid: "d-2"),
+            Entity("Alice", summary: "second version", uuid: "d-1"),
+            Entity("Carol", summary: "carol", uuid: "d-3"),
+            Entity("Dan", summary: "dan", uuid: "d-4"),
+            Entity("Alice", summary: "third version wins", uuid: "d-1"),
+            Entity("Erin", summary: "erin", uuid: "d-5"),
+        };
+        await SaveBoth(postgres, memory, d => d.EntityNodeOps.SaveBulkAsync(batch));
+
+        Assert.Equal("third version wins", (await postgres.EntityNodeOps.GetByUuidAsync("d-1")).Summary);
+        Assert.Equal(5L, await ScalarAsync<long>(
+            $"SELECT sum(docs1)::bigint FROM \"{_schema}\".search_statistics WHERE table_name = 'entities' AND $1 <> ''"));
+        foreach (var query in new[] { "alice", "version", "third wins", "bob carol dan erin" })
+        {
+            Assert.Equal(
+                Ids(await memory.SearchOps.NodeFulltextSearchAsync(query, SearchFilters.None, [Group])),
+                Ids(await postgres.SearchOps.NodeFulltextSearchAsync(query, SearchFilters.None, [Group])));
+        }
+    }
+
+    [PostgresFact]
+    public async Task Rows_keyed_by_graphiti_net_0_1_are_searched_exactly_then_converted()
+    {
+        var postgres = await CreateAsync();
+        var memory = new InMemoryGraphDriver();
+        var random = new Random(23);
+        var entities = Enumerable.Range(0, 5000)
+            .Select(i => Entity(Text(random, 1 + random.Next(3)), summary: Text(random, random.Next(40)), uuid: $"e-{i:D4}"))
+            .ToList();
+        foreach (IGraphDriver driver in new IGraphDriver[] { postgres, memory })
+        {
+            await driver.EntityNodeOps.SaveBulkAsync(entities);
+        }
+
+        var table = $"\"{_schema}\".entities";
+        var keys = await ScalarAsync<long>($"SELECT sum(cardinality(search_keys))::bigint FROM {table} WHERE $1 <> ''");
+        var digest = $"SELECT md5(string_agg(k, ',' ORDER BY uuid, k)) FROM {table}, unnest(search_keys) AS k WHERE $1 <> ''";
+        var before = await ScalarAsync<string>(digest);
+
+        // Every other row back to 0.1's keys (field:term, no impact class), as a 0.1 application would write them;
+        // the triggers keep the counts exact.
+        await ExecuteAsync(
+            $"UPDATE {table} SET search_keys = ARRAY(SELECT DISTINCT regexp_replace(k, '\\|-?[0-9]+$', '') "
+            + "FROM unnest(search_keys) AS k) WHERE right(uuid, 1) IN ('0', '2', '4', '6', '8')");
+        Assert.Equal(keys, await ScalarAsync<long>($"SELECT sum(cardinality(search_keys))::bigint FROM {table} WHERE $1 <> ''"));
+
+        async Task AssertSameRankingAsync()
+        {
+            for (var i = 0; i < 12; i++)
+            {
+                var query = string.Join(' ', Enumerable.Range(0, 1 + random.Next(3)).Select(_ => Vocabulary[random.Next(5)]));
+                Assert.Equal(
+                    Ids(await memory.SearchOps.NodeFulltextSearchAsync(query, SearchFilters.None, [Group], 10)),
+                    Ids(await postgres.SearchOps.NodeFulltextSearchAsync(query, SearchFilters.None, [Group], 10)));
+            }
+        }
+
+        await AssertSameRankingAsync();
+
+        // Building converts them, computing the impact classes in SQL exactly as .NET does.
+        await ExecuteAsync($"DELETE FROM \"{_schema}\".search_term_counts WHERE key = ''");
+        await postgres.GraphOps.BuildIndicesAndConstraintsAsync();
+        Assert.Equal(before, await ScalarAsync<string>(digest));
+        await AssertSameRankingAsync();
+    }
+
+    [PostgresFact]
     public async Task Statistics_stay_exact_under_concurrent_writes()
     {
         var postgres = await CreateAsync();
@@ -244,6 +391,17 @@ public sealed class PostgresBm25Tests : IAsyncLifetime
         var counted = reader.GetFieldValue<long[]>(1);
         Assert.Equal(counted, kept);
         Assert.True(counted[0] > 0);
+        await reader.DisposeAsync();
+
+        // The per-key counts too: no key whose kept count differs from a recount.
+        Assert.Equal(0L, await ScalarAsync<long>(
+            $"SELECT count(*) FROM (SELECT key, sum(docs) AS docs FROM \"{_schema}\".search_term_counts "
+            + "WHERE table_name = 'entities' AND key <> '' GROUP BY key HAVING sum(docs) <> 0) AS kept "
+            + "FULL JOIN (SELECT k.key, count(*) AS docs FROM \"" + _schema + "\".entities AS r, unnest(r.search_keys) AS k(key) "
+            + "GROUP BY k.key UNION ALL SELECT '#' || text_search_config::text, count(*) FROM \"" + _schema + "\".entities "
+            + "WHERE search_lengths IS NOT NULL GROUP BY 1 UNION ALL SELECT '@' || group_id, count(*) FROM \"" + _schema + "\".entities "
+            + "WHERE search_lengths IS NOT NULL GROUP BY 1) AS counted ON counted.key = kept.key "
+            + "WHERE kept.docs IS DISTINCT FROM counted.docs AND $1 <> ''"));
     }
 
     [PostgresFact]

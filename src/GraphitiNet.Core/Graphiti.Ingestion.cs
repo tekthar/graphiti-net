@@ -29,6 +29,23 @@ public sealed partial class Graphiti
     /// this method again with <paramref name="uuid"/> set to <see cref="ModelCallRefusedException.EpisodeUuid"/>: the
     /// stored episode (its content, source and reference time) is used and the other content arguments are ignored,
     /// as upstream. Without a gate, nothing is saved until the end, as upstream.</para>
+    /// <para><b>Idempotency key (graphiti-net addition).</b> With <paramref name="idempotencyKey"/>, the episode is
+    /// saved under the key before any model call, and a call that fails afterwards (in extraction, deduplication or
+    /// resolution) can be retried with the same key:</para>
+    /// <list type="bullet">
+    /// <item>no episode of the group has the key: a new episode is created, as without a key;</item>
+    /// <item>an episode has the key but was not processed (the earlier call failed before saving entities and facts,
+    /// which are saved in one transaction): it is processed from its stored name, content, source, reference time and
+    /// metadata; the other content arguments are ignored, as with <paramref name="uuid"/>;</item>
+    /// <item>an episode has the key and was processed (it mentions an entity or states a fact): nothing is extracted
+    /// again. The stored episode, its entities, facts and mentions are returned with
+    /// <see cref="AddEpisodeResults.Replayed"/> set and no token usage. A saga join the earlier call did not finish is
+    /// completed, and with <paramref name="updateCommunities"/> the communities are updated.</item>
+    /// </list>
+    /// <para>The key is unique per group in storage, so two concurrent calls with the same key create one episode.
+    /// Under the default <see cref="IGroupLock"/> the second call waits and then replays the first call's result;
+    /// without a group lock shared by both callers (<see cref="NoGroupLock"/>, or several servers with an in-process
+    /// lock), both may process the one episode.</para>
     /// <para>The <paramref name="cancellationToken"/> is checked between pipeline steps.</para>
     /// </remarks>
     /// <param name="name">The episode's name.</param>
@@ -58,11 +75,17 @@ public sealed partial class Graphiti
     /// call's <see cref="AddEpisodeResults.Episode"/> id when adding a sequence.</param>
     /// <param name="episodeMetadata">Host data stored on the episode and shown to model calls through
     /// <see cref="GraphitiCallContext"/>. A graphiti-net addition.</param>
+    /// <param name="idempotencyKey">The host's key for this episode, unique within the group (at most
+    /// <see cref="MaxIdempotencyKeyLength"/> characters), so the call can be retried safely: when an episode of the
+    /// group already has the key, this call resumes that episode instead of creating another (see the remarks). Stored
+    /// as <see cref="EpisodicNode.IdempotencyKey"/>. Cannot be combined with <paramref name="uuid"/>. A graphiti-net
+    /// addition (tekthar/graphiti-net#9).</param>
     /// <param name="cancellationToken">Cancels between steps.</param>
     /// <returns>What was added or changed, with this call's token usage.</returns>
     /// <exception cref="EntityTypeValidationException">A custom entity type uses a protected attribute.</exception>
-    /// <exception cref="ArgumentException">An excluded entity type is unknown, or the episode named by
-    /// <paramref name="uuid"/> belongs to another group than <paramref name="groupId"/>.</exception>
+    /// <exception cref="ArgumentException">An excluded entity type is unknown, the episode named by
+    /// <paramref name="uuid"/> belongs to another group than <paramref name="groupId"/>, or
+    /// <paramref name="idempotencyKey"/> is empty, too long or given with <paramref name="uuid"/>.</exception>
     /// <exception cref="GroupIdValidationException">The group id has invalid characters.</exception>
     /// <exception cref="ModelCallRefusedException">The model call gate refused a call.</exception>
     public async Task<AddEpisodeResults> AddEpisodeAsync(
@@ -83,6 +106,7 @@ public sealed partial class Graphiti
         SagaReference? saga = null,
         string? sagaPreviousEpisodeUuid = null,
         IDictionary<string, object?>? episodeMetadata = null,
+        string? idempotencyKey = null,
         CancellationToken cancellationToken = default)
     {
         var start = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -90,6 +114,7 @@ public sealed partial class Graphiti
 
         EntityTypesUtils.ValidateEntityTypes(entityTypes);
         EntityTypesUtils.ValidateExcludedEntityTypes(excludedEntityTypes, entityTypes);
+        ValidateIdempotencyKey(idempotencyKey, uuid, nameof(idempotencyKey));
 
         // graphiti-net: a stored episode is processed in its own group, so its lock is the one taken and no other
         // group's episodes become its context.
@@ -107,12 +132,19 @@ public sealed partial class Graphiti
 
         try
         {
+            // graphiti-net: an episode stored under the idempotency key is resumed; read under the lock.
+            var keyed = idempotencyKey is null
+                ? null
+                : await driver.EpisodeNodeOps.GetByIdempotencyKeyAsync(resolvedGroupId, idempotencyKey,
+                    cancellationToken).ConfigureAwait(false);
+            var resumed = keyed is not null;
+
             var previousEpisodes = previousEpisodeUuids is null
                 ? await RetrieveEpisodesWithDriverAsync(
-                        referenceTime,
+                        keyed?.ValidAt ?? referenceTime,
                         SearchDefaults.RelevantSchemaLimit,
                         [resolvedGroupId],
-                        source,
+                        keyed?.Source ?? source,
                         null,
                         driver,
                         cancellationToken)
@@ -122,7 +154,7 @@ public sealed partial class Graphiti
 
             var episode = uuid is not null
                 ? await driver.EpisodeNodeOps.GetByUuidAsync(uuid, cancellationToken).ConfigureAwait(false)
-                : new EpisodicNode
+                : keyed ?? new EpisodicNode
                 {
                     Name = name,
                     GroupId = resolvedGroupId,
@@ -133,6 +165,7 @@ public sealed partial class Graphiti
                     CreatedAt = now,
                     ValidAt = referenceTime,
                     EpisodeMetadata = episodeMetadata,
+                    IdempotencyKey = idempotencyKey,
                 };
 
             if (uuid is not null)
@@ -143,6 +176,20 @@ public sealed partial class Graphiti
                 // Reprocessing a stored episode: it must not be its own context (upstream would include it).
                 previousEpisodes = previousEpisodes.Where(previous => previous.Uuid != episode.Uuid).ToList();
             }
+            else if (idempotencyKey is not null)
+            {
+                if (!resumed)
+                {
+                    // Save the episode under its key before any model call. A concurrent call that took the key first
+                    // (without a shared group lock) wins, and its episode is resumed instead.
+                    var stored = await driver.EpisodeNodeOps.AddOrGetByIdempotencyKeyAsync(episode, cancellationToken)
+                        .ConfigureAwait(false);
+                    resumed = stored.Uuid != episode.Uuid;
+                    episode = stored;
+                }
+
+                previousEpisodes = previousEpisodes.Where(previous => previous.Uuid != episode.Uuid).ToList();
+            }
             else if (ModelCallGate is not null)
             {
                 // graphiti-net addition: with a gate, keep the episode even if a model call is refused later.
@@ -151,6 +198,37 @@ public sealed partial class Graphiti
 
             using var episodeScope = BeginEpisode(episode);
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (resumed && await GetProcessedEpisodeAsync(driver, episode, cancellationToken).ConfigureAwait(false)
+                    is { } processed)
+            {
+                // Processed by an earlier call with this key: extract nothing again, finish what it may not have.
+                if (saga is not null)
+                {
+                    await JoinSagaAsync(episode, saga, sagaPreviousEpisodeUuid, resolvedGroupId, now, driver,
+                        skipIfJoined: true, cancellationToken).ConfigureAwait(false);
+                }
+
+                List<CommunityNode> replayCommunities = [];
+                List<CommunityEdge> replayCommunityEdges = [];
+                if (updateCommunities)
+                {
+                    (replayCommunities, replayCommunityEdges) = await UpdateCommunitiesAsync(
+                        clients, processed.Nodes, cancellationToken).ConfigureAwait(false);
+                }
+
+                var replayMs = ElapsedMilliseconds(start);
+                activity?.SetTag("episode.uuid", episode.Uuid);
+                activity?.SetTag("episode.replayed", true);
+                GraphitiLog.Completed(Logger, "add_episode", replayMs);
+                return processed with
+                {
+                    Communities = replayCommunities,
+                    CommunityEdges = replayCommunityEdges,
+                    TokenUsage = usage.GetTotalUsage(),
+                    TokenUsageByPrompt = usage.GetUsage(),
+                };
+            }
 
             var edgeTypeMapDefault = DefaultEdgeTypeMap(edgeTypes);
             var effectiveEdgeTypeMap = edgeTypeMap is { Count: > 0 } ? edgeTypeMap : edgeTypeMapDefault;
@@ -221,23 +299,16 @@ public sealed partial class Graphiti
                     sagaPreviousEpisodeUuid,
                     nodeEpisodeIndexMap,
                     clients,
-                    cancellationToken)
+                    cancellationToken,
+                    skipIfInSaga: resumed)
                 .ConfigureAwait(false);
 
             List<CommunityNode> communities = [];
             List<CommunityEdge> communityEdges = [];
             if (updateCommunities)
             {
-                // Upstream unpacks the gathered per-node tuples into two names, which only works for exactly two
-                // nodes; here the per-node results are concatenated.
-                var updates = await Concurrency.SemaphoreGatherAsync(
-                        nodes.Select<EntityNode, Func<Task<(IReadOnlyList<CommunityNode>, IReadOnlyList<CommunityEdge>)>>>(
-                            node => () => CommunityOperations.UpdateCommunityAsync(clients, node, cancellationToken)),
-                        MaxCoroutines,
-                        cancellationToken)
+                (communities, communityEdges) = await UpdateCommunitiesAsync(clients, nodes, cancellationToken)
                     .ConfigureAwait(false);
-                communities = updates.SelectMany(update => update.Item1).ToList();
-                communityEdges = updates.SelectMany(update => update.Item2).ToList();
             }
 
             var durationMs = ElapsedMilliseconds(start);
@@ -285,11 +356,18 @@ public sealed partial class Graphiti
     /// backfills, but episodes in one batch do not see each other's facts as context.
     /// </summary>
     /// <remarks>
-    /// As upstream, bulk ingestion keeps episode content even when <see cref="StoreRawEpisodeContent"/> is
-    /// <see langword="false"/>, does not update communities, and saves the episodes first.
+    /// <para>As upstream, bulk ingestion keeps episode content even when <see cref="StoreRawEpisodeContent"/> is
+    /// <see langword="false"/>, does not update communities, and saves the episodes first.</para>
+    /// <para><b>Idempotency keys (graphiti-net addition).</b> An episode with a <see cref="RawEpisode.IdempotencyKey"/>
+    /// that an episode of the group already has is resumed instead of created again: processed with the batch from its
+    /// stored fields if the earlier call did not process it, left as it is (and returned with what is stored for it)
+    /// if it did. Retrying a failed bulk call with the same keys therefore ends with one episode per key and no
+    /// duplicate entities or facts. A saga only gets the episodes it does not have yet. See
+    /// <see cref="AddEpisodeAsync"/> for the rules.</para>
     /// </remarks>
     /// <param name="bulkEpisodes">The episodes. An episode with a <see cref="RawEpisode.Uuid"/> is read from storage
-    /// and must belong to the group (<see cref="ArgumentException"/> otherwise).</param>
+    /// and must belong to the group (<see cref="ArgumentException"/> otherwise). Idempotency keys must be distinct
+    /// within the batch.</param>
     /// <param name="groupId">The graph partition; <see langword="null"/> means the default group.</param>
     /// <param name="entityTypes">Custom entity types.</param>
     /// <param name="excludedEntityTypes">Entity types to leave out.</param>
@@ -316,6 +394,19 @@ public sealed partial class Graphiti
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bulkEpisodes);
+        foreach (var raw in bulkEpisodes)
+        {
+            ValidateIdempotencyKey(raw.IdempotencyKey, raw.Uuid, nameof(bulkEpisodes));
+        }
+
+        if (bulkEpisodes.Where(raw => raw.IdempotencyKey is not null)
+                .GroupBy(raw => raw.IdempotencyKey, StringComparer.Ordinal)
+                .FirstOrDefault(keyGroup => keyGroup.Count() > 1) is { } repeated)
+        {
+            throw new ArgumentException(
+                $"The idempotency key '{repeated.Key}' appears more than once in the batch.", nameof(bulkEpisodes));
+        }
+
         using var activity = StartActivity("add_episode_bulk");
         activity?.SetTag("episode.count", bulkEpisodes.Count);
 
@@ -334,6 +425,11 @@ public sealed partial class Graphiti
             var effectiveEdgeTypeMap = edgeTypeMap is { Count: > 0 } ? edgeTypeMap : edgeTypeMapDefault;
 
             var episodes = new List<EpisodicNode>();
+
+            // graphiti-net: episodes an earlier call with their idempotency key already processed, kept out of the
+            // pipeline and returned as stored.
+            var allEpisodes = new List<EpisodicNode>();
+            var replayed = new List<AddEpisodeResults>();
             foreach (var raw in bulkEpisodes)
             {
                 EpisodicNode? stored = null;
@@ -344,7 +440,7 @@ public sealed partial class Graphiti
                     EnsureEpisodeInGroup(raw.Uuid, stored.GroupId, resolvedGroupId);
                 }
 
-                episodes.Add(stored ?? new EpisodicNode
+                var episode = stored ?? new EpisodicNode
                 {
                     Name = raw.Name,
                     Labels = [],
@@ -355,7 +451,35 @@ public sealed partial class Graphiti
                     CreatedAt = now,
                     ValidAt = raw.ReferenceTime,
                     EpisodeMetadata = raw.EpisodeMetadata,
-                });
+                    IdempotencyKey = raw.IdempotencyKey,
+                };
+
+                if (raw.IdempotencyKey is not null)
+                {
+                    var claimed = await driver.EpisodeNodeOps.AddOrGetByIdempotencyKeyAsync(episode, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (claimed.Uuid != episode.Uuid
+                        && await GetProcessedEpisodeAsync(driver, claimed, cancellationToken).ConfigureAwait(false)
+                            is { } processed)
+                    {
+                        allEpisodes.Add(claimed);
+                        replayed.Add(processed);
+                        continue;
+                    }
+
+                    episode = claimed;
+                }
+
+                allEpisodes.Add(episode);
+                episodes.Add(episode);
+            }
+
+            if (episodes.Count == 0 && replayed.Count > 0)
+            {
+                // Every episode was processed before: nothing to extract.
+                await JoinSagaBulkAsync(saga, allEpisodes, resolvedGroupId, now, driver, skipJoined: true,
+                    cancellationToken).ConfigureAwait(false);
+                return ReplayedBulkResults(allEpisodes, [], [], [], replayed, usage);
             }
 
             // Save all episodes.
@@ -438,62 +562,9 @@ public sealed partial class Graphiti
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            if (saga is not null)
-            {
-                SagaNode sagaNode;
-                if (saga.Name is not null)
-                {
-                    // Anchor a new saga to the earliest reference time in the batch.
-                    var sagaCreatedAt = episodes.Count > 0 ? episodes.Min(episode => episode.ValidAt) : now;
-                    sagaNode = await GetOrCreateSagaAsync(saga.Name, resolvedGroupId, sagaCreatedAt, driver,
-                        cancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    sagaNode = saga.Node!;
-                }
-
-                var sortedEpisodes = episodes.OrderBy(episode => episode.ValidAt).ToList();
-                var previousEpisodeUuid = await SagaGetPreviousEpisodeUuidAsync(sagaNode.Uuid, "", driver,
-                    cancellationToken).ConfigureAwait(false);
-
-                foreach (var episode in sortedEpisodes)
-                {
-                    if (previousEpisodeUuid is not null)
-                    {
-                        await driver.NextEpisodeEdgeOps.SaveAsync(
-                                new NextEpisodeEdge
-                                {
-                                    SourceNodeUuid = previousEpisodeUuid,
-                                    TargetNodeUuid = episode.Uuid,
-                                    GroupId = resolvedGroupId,
-                                    CreatedAt = now,
-                                },
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
-                    await driver.HasEpisodeEdgeOps.SaveAsync(
-                            new HasEpisodeEdge
-                            {
-                                SourceNodeUuid = sagaNode.Uuid,
-                                TargetNodeUuid = episode.Uuid,
-                                GroupId = resolvedGroupId,
-                                CreatedAt = now,
-                            },
-                            cancellationToken)
-                        .ConfigureAwait(false);
-
-                    previousEpisodeUuid = episode.Uuid;
-                }
-
-                if (sortedEpisodes.Count > 0)
-                {
-                    sagaNode.FirstEpisodeUuid ??= sortedEpisodes[0].Uuid;
-                    sagaNode.LastEpisodeUuid = sortedEpisodes[^1].Uuid;
-                    await driver.SagaNodeOps.SaveAsync(sagaNode, cancellationToken).ConfigureAwait(false);
-                }
-            }
+            var anyKeys = bulkEpisodes.Any(raw => raw.IdempotencyKey is not null);
+            await JoinSagaBulkAsync(saga, anyKeys ? allEpisodes : episodes, resolvedGroupId, now, driver,
+                skipJoined: anyKeys, cancellationToken).ConfigureAwait(false);
 
             var durationMs = ElapsedMilliseconds(start);
             activity?.SetTag("group_id", resolvedGroupId);
@@ -501,6 +572,12 @@ public sealed partial class Graphiti
             activity?.SetTag("edge.count", edgesToSave.Count);
             activity?.SetTag("duration_ms", durationMs);
             GraphitiLog.Completed(Logger, "add_episode_bulk", durationMs);
+
+            if (replayed.Count > 0)
+            {
+                return ReplayedBulkResults(allEpisodes, resolvedEpisodicEdges, finalHydratedNodes, edgesToSave,
+                    replayed, usage);
+            }
 
             return new AddBulkEpisodeResults
             {
@@ -520,6 +597,107 @@ public sealed partial class Graphiti
             throw;
         }
     }
+
+    // The saga part of add_episode_bulk: chains the episodes into the saga by reference time. With skipJoined
+    // (graphiti-net, when idempotency keys may resume episodes), episodes already in the saga are not linked again.
+    private async Task JoinSagaBulkAsync(
+        SagaReference? saga,
+        List<EpisodicNode> episodes,
+        string resolvedGroupId,
+        DateTimeOffset now,
+        Driver.IGraphDriver driver,
+        bool skipJoined,
+        CancellationToken cancellationToken)
+    {
+        if (saga is not null)
+        {
+            SagaNode sagaNode;
+            if (saga.Name is not null)
+            {
+                // Anchor a new saga to the earliest reference time in the batch.
+                var sagaCreatedAt = episodes.Count > 0 ? episodes.Min(episode => episode.ValidAt) : now;
+                sagaNode = await GetOrCreateSagaAsync(saga.Name, resolvedGroupId, sagaCreatedAt, driver,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                sagaNode = saga.Node!;
+            }
+
+            var joined = skipJoined
+                ? (await driver.EpisodeNodeOps.GetBySagaAsync(sagaNode.Uuid, null, cancellationToken)
+                    .ConfigureAwait(false)).Select(member => member.Uuid).ToHashSet(StringComparer.Ordinal)
+                : [];
+            var sortedEpisodes = episodes.Where(episode => !joined.Contains(episode.Uuid))
+                .OrderBy(episode => episode.ValidAt)
+                .ToList();
+            if (skipJoined && sortedEpisodes.Count == 0)
+            {
+                return;
+            }
+
+            var previousEpisodeUuid = await SagaGetPreviousEpisodeUuidAsync(sagaNode.Uuid, "", driver,
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var episode in sortedEpisodes)
+            {
+                if (previousEpisodeUuid is not null)
+                {
+                    await driver.NextEpisodeEdgeOps.SaveAsync(
+                            new NextEpisodeEdge
+                            {
+                                SourceNodeUuid = previousEpisodeUuid,
+                                TargetNodeUuid = episode.Uuid,
+                                GroupId = resolvedGroupId,
+                                CreatedAt = now,
+                            },
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                await driver.HasEpisodeEdgeOps.SaveAsync(
+                        new HasEpisodeEdge
+                        {
+                            SourceNodeUuid = sagaNode.Uuid,
+                            TargetNodeUuid = episode.Uuid,
+                            GroupId = resolvedGroupId,
+                            CreatedAt = now,
+                        },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                previousEpisodeUuid = episode.Uuid;
+            }
+
+            if (sortedEpisodes.Count > 0)
+            {
+                sagaNode.FirstEpisodeUuid ??= sortedEpisodes[0].Uuid;
+                sagaNode.LastEpisodeUuid = sortedEpisodes[^1].Uuid;
+                await driver.SagaNodeOps.SaveAsync(sagaNode, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    // graphiti-net: bulk results when some episodes were already processed by an earlier call with their keys. The
+    // episodes are in input order; records are listed once.
+    private static AddBulkEpisodeResults ReplayedBulkResults(
+        IReadOnlyList<EpisodicNode> episodes,
+        IReadOnlyList<EpisodicEdge> episodicEdges,
+        IReadOnlyList<EntityNode> nodes,
+        IReadOnlyList<EntityEdge> edges,
+        IReadOnlyList<AddEpisodeResults> replayed,
+        TokenUsageTracker usage) => new()
+    {
+        Episodes = episodes,
+        EpisodicEdges = [.. episodicEdges.Concat(replayed.SelectMany(r => r.EpisodicEdges))
+            .DistinctBy(edge => edge.Uuid, StringComparer.Ordinal)],
+        Nodes = [.. nodes.Concat(replayed.SelectMany(r => r.Nodes)).DistinctBy(node => node.Uuid, StringComparer.Ordinal)],
+        Edges = [.. edges.Concat(replayed.SelectMany(r => r.Edges)).DistinctBy(edge => edge.Uuid, StringComparer.Ordinal)],
+        Communities = [],
+        CommunityEdges = [],
+        TokenUsage = usage.GetTotalUsage(),
+        TokenUsageByPrompt = usage.GetUsage(),
+    };
 
     /// <summary>
     /// Adds one fact between two entities directly, without extraction (upstream <c>add_triplet</c>). Entities that
@@ -882,7 +1060,8 @@ public sealed partial class Graphiti
         string? sagaPreviousEpisodeUuid,
         IReadOnlyDictionary<string, IReadOnlyList<int>>? nodeEpisodeIndexMap,
         GraphitiClients clients,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool skipIfInSaga = false)
     {
         var driver = clients.Driver;
         var episodeUuids = episodes.Select(episode => episode.Uuid).ToList();
@@ -904,47 +1083,172 @@ public sealed partial class Graphiti
         var primaryEpisode = episodes[0];
         if (saga is not null)
         {
-            var sagaNode = saga.Name is not null
-                // A new saga is stamped with the reference time of the episode that created it.
-                ? await GetOrCreateSagaAsync(saga.Name, groupId, primaryEpisode.ValidAt, driver, cancellationToken)
-                    .ConfigureAwait(false)
-                : saga.Node!;
+            await JoinSagaAsync(primaryEpisode, saga, sagaPreviousEpisodeUuid, groupId, now, driver, skipIfInSaga,
+                cancellationToken).ConfigureAwait(false);
+        }
 
-            var previousEpisodeUuid = sagaPreviousEpisodeUuid
-                                      ?? await SagaGetPreviousEpisodeUuidAsync(sagaNode.Uuid, primaryEpisode.Uuid,
-                                          driver, cancellationToken).ConfigureAwait(false);
+        return (episodicEdges, primaryEpisode);
+    }
 
-            if (previousEpisodeUuid is not null)
-            {
-                await driver.NextEpisodeEdgeOps.SaveAsync(
-                        new NextEpisodeEdge
-                        {
-                            SourceNodeUuid = previousEpisodeUuid,
-                            TargetNodeUuid = primaryEpisode.Uuid,
-                            GroupId = groupId,
-                            CreatedAt = now,
-                        },
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
+    // The saga part of _process_episode_data. With skipIfJoined (graphiti-net, for a resumed episode), an episode
+    // already in the saga is not linked again.
+    private async Task JoinSagaAsync(
+        EpisodicNode primaryEpisode,
+        SagaReference saga,
+        string? sagaPreviousEpisodeUuid,
+        string groupId,
+        DateTimeOffset now,
+        Driver.IGraphDriver driver,
+        bool skipIfJoined,
+        CancellationToken cancellationToken)
+    {
+        var sagaNode = saga.Name is not null
+            // A new saga is stamped with the reference time of the episode that created it.
+            ? await GetOrCreateSagaAsync(saga.Name, groupId, primaryEpisode.ValidAt, driver, cancellationToken)
+                .ConfigureAwait(false)
+            : saga.Node!;
 
-            await driver.HasEpisodeEdgeOps.SaveAsync(
-                    new HasEpisodeEdge
+        if (skipIfJoined && await IsInSagaAsync(driver, sagaNode, primaryEpisode.Uuid, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return;
+        }
+
+        var previousEpisodeUuid = sagaPreviousEpisodeUuid
+                                  ?? await SagaGetPreviousEpisodeUuidAsync(sagaNode.Uuid, primaryEpisode.Uuid,
+                                      driver, cancellationToken).ConfigureAwait(false);
+
+        if (previousEpisodeUuid is not null)
+        {
+            await driver.NextEpisodeEdgeOps.SaveAsync(
+                    new NextEpisodeEdge
                     {
-                        SourceNodeUuid = sagaNode.Uuid,
+                        SourceNodeUuid = previousEpisodeUuid,
                         TargetNodeUuid = primaryEpisode.Uuid,
                         GroupId = groupId,
                         CreatedAt = now,
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
-
-            sagaNode.FirstEpisodeUuid ??= primaryEpisode.Uuid;
-            sagaNode.LastEpisodeUuid = primaryEpisode.Uuid;
-            await driver.SagaNodeOps.SaveAsync(sagaNode, cancellationToken).ConfigureAwait(false);
         }
 
-        return (episodicEdges, primaryEpisode);
+        await driver.HasEpisodeEdgeOps.SaveAsync(
+                new HasEpisodeEdge
+                {
+                    SourceNodeUuid = sagaNode.Uuid,
+                    TargetNodeUuid = primaryEpisode.Uuid,
+                    GroupId = groupId,
+                    CreatedAt = now,
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        sagaNode.FirstEpisodeUuid ??= primaryEpisode.Uuid;
+        sagaNode.LastEpisodeUuid = primaryEpisode.Uuid;
+        await driver.SagaNodeOps.SaveAsync(sagaNode, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<bool> IsInSagaAsync(
+        Driver.IGraphDriver driver,
+        SagaNode saga,
+        string episodeUuid,
+        CancellationToken cancellationToken) =>
+        (await driver.EpisodeNodeOps.GetBySagaAsync(saga.Uuid, null, cancellationToken).ConfigureAwait(false))
+        .Any(member => member.Uuid == episodeUuid);
+
+    // The update_communities step of add_episode. Upstream unpacks the gathered per-node tuples into two names, which
+    // only works for exactly two nodes; here the per-node results are concatenated.
+    private async Task<(List<CommunityNode> Communities, List<CommunityEdge> CommunityEdges)> UpdateCommunitiesAsync(
+        GraphitiClients clients,
+        IReadOnlyList<EntityNode> nodes,
+        CancellationToken cancellationToken)
+    {
+        var updates = await Concurrency.SemaphoreGatherAsync(
+                nodes.Select<EntityNode, Func<Task<(IReadOnlyList<CommunityNode>, IReadOnlyList<CommunityEdge>)>>>(
+                    node => () => CommunityOperations.UpdateCommunityAsync(clients, node, cancellationToken)),
+                MaxCoroutines,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return ([.. updates.SelectMany(update => update.Item1)], [.. updates.SelectMany(update => update.Item2)]);
+    }
+
+    /// <summary>The longest idempotency key <see cref="AddEpisodeAsync"/> and <see cref="AddEpisodeBulkAsync"/>
+    /// accept, in UTF-16 code units: what every bundled driver can index. A graphiti-net addition.</summary>
+    public const int MaxIdempotencyKeyLength = 255;
+
+    private static void ValidateIdempotencyKey(string? key, string? uuid, string parameterName)
+    {
+        if (key is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException("The idempotency key must not be empty.", parameterName);
+        }
+
+        if (key.Length > MaxIdempotencyKeyLength)
+        {
+            throw new ArgumentException(
+                $"The idempotency key must be at most {MaxIdempotencyKeyLength} characters.", parameterName);
+        }
+
+        if (uuid is not null)
+        {
+            throw new ArgumentException("Give an idempotency key or an episode uuid, not both.", parameterName);
+        }
+    }
+
+    /// <summary>
+    /// What an earlier call stored for a resumed episode, with <see cref="AddEpisodeResults.Replayed"/> set, or
+    /// <see langword="null"/> when it was not processed. An episode counts as processed once it mentions an entity or
+    /// states a fact (both are saved with the episode in one transaction). An episode from which nothing was extracted
+    /// is processed again, which cannot duplicate anything.
+    /// </summary>
+    private static async Task<AddEpisodeResults?> GetProcessedEpisodeAsync(
+        Driver.IGraphDriver driver,
+        EpisodicNode episode,
+        CancellationToken cancellationToken)
+    {
+        var nodes = await driver.GraphOps.GetMentionedNodesAsync([episode], cancellationToken).ConfigureAwait(false);
+        if (nodes.Count == 0 && episode.EntityEdges.Count == 0)
+        {
+            return null;
+        }
+
+        var edges = await driver.EntityEdgeOps.GetByUuidsAsync(episode.EntityEdges, cancellationToken)
+            .ConfigureAwait(false);
+        var byUuid = edges.ToDictionary(edge => edge.Uuid, StringComparer.Ordinal);
+
+        // The driver contract has no lookup of one episode's mentions: page through the group's.
+        const int pageSize = 1000;
+        var mentions = new List<EpisodicEdge>();
+        string? cursor = null;
+        while (true)
+        {
+            var page = await driver.EpisodicEdgeOps.GetByGroupIdsAsync([episode.GroupId], pageSize, cursor,
+                cancellationToken).ConfigureAwait(false);
+            mentions.AddRange(page.Where(mention => mention.SourceNodeUuid == episode.Uuid));
+            if (page.Count < pageSize)
+            {
+                break;
+            }
+
+            cursor = page[^1].Uuid;
+        }
+
+        return new AddEpisodeResults
+        {
+            Episode = episode,
+            EpisodicEdges = mentions,
+            Nodes = nodes,
+            Edges = [.. episode.EntityEdges.Distinct(StringComparer.Ordinal).Where(byUuid.ContainsKey)
+                .Select(uuid => byUuid[uuid])],
+            Communities = [],
+            CommunityEdges = [],
+            Replayed = true,
+        };
     }
 
     // _extract_and_resolve_edges.
