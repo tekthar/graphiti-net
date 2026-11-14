@@ -54,25 +54,42 @@ internal sealed class EpisodeNodeOperations(DriverCore core)
         ArgumentNullException.ThrowIfNull(episode);
         var key = episode.IdempotencyKey
                   ?? throw new ArgumentException("The episode has no idempotency key.", nameof(episode));
-        if (await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false) is { } found)
+        // Two writers racing on one key: the unique index refuses the second, or SQL Server picks one of them as a
+        // deadlock victim (its whole transaction is rolled back). Either way the other writer's episode is the answer;
+        // a victim whose rival also failed tries again.
+        for (var attempt = 1; ; attempt++)
         {
-            return found;
-        }
+            if (await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false) is { } found)
+            {
+                return found;
+            }
 
-        try
-        {
-            await SaveAsync(episode, cancellationToken).ConfigureAwait(false);
-        }
-        catch (SqlException e) when (e.Number is DuplicateKeyRow or UniqueConstraintViolation)
-        {
+            try
+            {
+                await SaveAsync(episode, cancellationToken).ConfigureAwait(false);
+            }
+            catch (SqlException e) when (e.Number is DuplicateKeyRow or UniqueConstraintViolation)
+            {
+                return await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false)
+                       ?? throw new InvalidOperationException(
+                           $"The idempotency key '{key}' was taken in group '{episode.GroupId}', then released.", e);
+            }
+            catch (SqlException e) when (e.Number == DeadlockVictim && attempt < MaxDeadlockAttempts)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(Random.Shared.Next(20, 100) * attempt), cancellationToken)
+                    .ConfigureAwait(false);
+                continue;
+            }
+
             return await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false)
-                   ?? throw new InvalidOperationException(
-                       $"The idempotency key '{key}' was taken in group '{episode.GroupId}', then released.", e);
+                   ?? episode;
         }
-
-        return await GetByIdempotencyKeyAsync(episode.GroupId, key, cancellationToken).ConfigureAwait(false)
-               ?? episode;
     }
+
+    // "Transaction ... was deadlocked on lock resources with another process and has been chosen as the deadlock victim"
+    private const int DeadlockVictim = 1205;
+
+    private const int MaxDeadlockAttempts = 5;
 
     // "Cannot insert duplicate key row in object ... with unique index ..."
     private const int DuplicateKeyRow = 2601;
