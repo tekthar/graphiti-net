@@ -17,8 +17,9 @@ it came from.
 
 ## Status
 
-**`0.1.0`**, the first release. The API follows Python Graphiti v0.31.2 and may still change before 1.0. See the
-[changelog](CHANGELOG.md) and the [roadmap](docs/roadmap.md).
+**`0.2.0`**. The API follows Python Graphiti v0.31.2 and may still change before 1.0. See the
+[changelog](CHANGELOG.md) (upgrading from 0.1.0 takes one `BuildIndicesAndConstraintsAsync` call or one migration), the
+[roadmap](docs/roadmap.md) and [feature parity](docs/feature-parity.md).
 
 | Area | State |
 | --- | --- |

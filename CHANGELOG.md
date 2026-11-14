@@ -6,6 +6,17 @@ All notable changes to graphiti-net are written here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-14
+
+What the first consumer, AbpAgent, needed after 0.1.0, faster PostgreSQL keyword search at a million records, and
+LongMemEval question answering on 102 questions. Every addition is opt-in; default behaviour stays upstream's.
+
+**Upgrading from 0.1.0.** Call `BuildIndicesAndConstraintsAsync` once after upgrading, as at every start. On PostgreSQL
+it converts the keyword index of every searchable row once (12 minutes per million rows without embeddings in the
+benchmark; plan it as maintenance on large graphs) and, on both databases, adds the episodes' `idempotency_key` column
+and its unique index. Hosts on EF Core migrations add one migration. See
+[docs/postgresql.md](docs/postgresql.md#upgrading-from-01) and [docs/sqlserver.md](docs/sqlserver.md#upgrading-from-010).
+
 ### Added
 
 - **Reads that apply the episode access filter** (#10): `Graphiti.GetGroupGraphAsync` (a group's entities and the
@@ -144,5 +155,6 @@ Packages: `GraphitiNet`, `GraphitiNet.PostgreSql` and `GraphitiNet.SqlServer`, f
 
 - Graph databases (Neo4j, FalkorDB, Amazon Neptune, Kuzu). Storage is PostgreSQL, SQL Server or in memory.
 
-[Unreleased]: https://github.com/tekthar/graphiti-net/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/tekthar/graphiti-net/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tekthar/graphiti-net/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tekthar/graphiti-net/releases/tag/v0.1.0

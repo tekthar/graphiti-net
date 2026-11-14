@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: November 2026, after the first release (`0.1.0`).
+Status: November 2026, after `0.2.0`.
 
 How we get from requirements to a working port. The requirements themselves are in [requirements.md](requirements.md).
 
@@ -93,11 +93,8 @@ Done and merged:
 - The first consumer's requirements ([#1](https://github.com/tekthar/graphiti-net/issues/1) and
   [#2](https://github.com/tekthar/graphiti-net/issues/2)), released in `0.1.0`.
 
-Next:
-
-- Local embedding models ([#3](https://github.com/tekthar/graphiti-net/issues/3)): no vector cutting by default, query
-  and document prefixes, no API key for a local server, and a tested Ollama path.
-- What the first consumer had to work around in `0.1.0`. All of it is additive, and default behaviour stays upstream's:
+- What the first consumer had to work around in `0.1.0`, released in `0.2.0`. All of it is additive, and default
+  behaviour stays upstream's:
   - a built-in reranker that keeps the given order ([#6](https://github.com/tekthar/graphiti-net/issues/6));
   - group locks that hold across servers ([#7](https://github.com/tekthar/graphiti-net/issues/7));
   - a typed error when the database can't store vectors
@@ -105,8 +102,17 @@ Next:
   - an idempotency key on `AddEpisodeAsync` ([#9](https://github.com/tekthar/graphiti-net/issues/9));
   - reads with the episode access filter applied ([#10](https://github.com/tekthar/graphiti-net/issues/10));
   - a public list of each driver's table names ([#11](https://github.com/tekthar/graphiti-net/issues/11)).
-- DMR and LoCoMo, and LongMemEval on more questions: the release gate for 1.0. (LongMemEval question answering on 102
-  questions, on PostgreSQL: graphiti-net 89/102, Python Graphiti 83/102; [results](../parity/results/2026-11-14-lme-qa-102.md).)
+- PostgreSQL keyword search fast on common words at a million mostly Arabic records, with the same results
+  ([benchmark](benchmarks/postgresql-keyword-search.md)), in `0.2.0`.
+- LongMemEval question answering on 102 questions, on PostgreSQL: graphiti-net 89/102, Python Graphiti 83/102
+  ([results](../parity/results/2026-11-14-lme-qa-102.md)), in `0.2.0`.
+
+Next:
+
+- Local embedding models ([#3](https://github.com/tekthar/graphiti-net/issues/3)): no vector cutting by default, query
+  and document prefixes, no API key for a local server, and a tested Ollama path.
+- 0.3, reach and hosting: see [feature-parity.md](feature-parity.md#releases).
+- DMR and LoCoMo, and LongMemEval on more questions: the release gate for 1.0..
 
 ## Phases
 

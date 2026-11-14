@@ -6,7 +6,7 @@ is v0.31.2 (October 2026), the release graphiti-net 0.1.0 ports, so this is the 
 > Graphiti is a brand of Zep Software, Inc. graphiti-net is an independent rewrite. It is not affiliated with,
 > endorsed by, or sponsored by Zep Software, Inc.
 
-Status: **Done** in 0.1.0 · **Partial** (works, with a gap noted) · **Planned** (with the target release) ·
+Status: **Done** (in 0.1.0 unless a release is named) · **Partial** (works, with a gap noted) · **Planned** (with the target release) ·
 **Not planned** (with the reason).
 
 ## Summary
