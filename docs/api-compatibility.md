@@ -413,6 +413,18 @@ upstream's.
   (`ChatClientLLMClient`, `OpenAIGenericClient`) retries rate limits and 5xx errors itself, 4 attempts 5 to 120
   seconds apart, and the OpenAI SDK retries 429 and 5xx responses. Attempts multiply; lower one layer if needed.
 
+### Guided JSON output for providers without `json_schema`
+
+`OpenAIGenericClient`'s `StructuredOutputMode.JsonObject` puts the response model's JSON Schema in the prompt under
+"Respond with a JSON object in the following format", as upstream's `json_object` mode does. Some models (seen with
+DeepSeek) answer with the schema's shape, such as `{"properties": {"duplicate_facts": ...}}`, which fails validation.
+`StructuredOutputMode.JsonObjectGuided` sends `json_object` too, but appends a plainer instruction: return the data,
+not the schema, then the schema, then an example object of the right shape with placeholder values (for
+`EdgeDuplicate`, `{"duplicate_facts": [0], "contradicted_facts": [0]}`). Opt in with
+`new OpenAIGenericClient(config, structuredOutputMode: StructuredOutputMode.JsonObjectGuided)`; `JsonObject` keeps
+upstream's text. `parity/python/lme_qa.py` sends the same text from upstream's client when
+`LLM_STRUCTURED_OUTPUT=json_object_guided`, and a test checks the two match character for character.
+
 ### Strict episode removal and clearing a group
 
 `RemoveEpisodeAsync(episodeUuid, strict: true)` leaves no text from the episode in the graph: every fact listing the

@@ -64,9 +64,12 @@ internal static class Qa
             model: model,
             baseUrl: baseUrl,
             smallModel: Environment.GetEnvironmentVariable("SMALL_LLM_MODEL") ?? model);
-        var mode = Environment.GetEnvironmentVariable("LLM_STRUCTURED_OUTPUT") == "json_schema"
-            ? StructuredOutputMode.JsonSchema
-            : StructuredOutputMode.JsonObject;
+        var mode = Environment.GetEnvironmentVariable("LLM_STRUCTURED_OUTPUT") switch
+        {
+            "json_schema" => StructuredOutputMode.JsonSchema,
+            "json_object_guided" => StructuredOutputMode.JsonObjectGuided,
+            _ => StructuredOutputMode.JsonObject,
+        };
         return new OpenAIGenericClient(config, structuredOutputMode: mode);
     }
 

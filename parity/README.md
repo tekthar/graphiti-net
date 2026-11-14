@@ -122,7 +122,7 @@ rest. The file is removed when the run completes.
 To build and answer with another OpenAI-compatible provider, set `LLM_BASE_URL` (for example
 `https://api.deepseek.com/v1`), `LLM_MODEL`, and `LLM_API_KEY` if the endpoint needs one. Both harnesses then use
 `OpenAIGenericClient` (upstream's and graphiti-net's) with `json_object` structured output (`LLM_STRUCTURED_OUTPUT=json_schema`
-for servers that support it). Embeddings and the grader stay on OpenAI.
+for servers that support it, `json_object_guided` for graphiti-net's clearer instruction, sent by both). Embeddings and the grader stay on OpenAI.
 
 ## Differential tests
 

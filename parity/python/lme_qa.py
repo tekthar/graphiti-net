@@ -73,6 +73,67 @@ def llm_config(model: str | None = None) -> LLMConfig:
     return LLMConfig(model=model or default, small_model=os.environ.get('SMALL_LLM_MODEL', model or default))
 
 
+def schema_example(node, root: dict, depth: int = 0):
+    """A placeholder instance of a schema node; graphiti-net's ResponseModelSchema.Example is the same."""
+    if not isinstance(node, dict) or depth > 8:
+        return None
+    if '$ref' in node:
+        return schema_example(root.get('$defs', {}).get(node['$ref'].rsplit('/', 1)[-1]), root, depth + 1)
+    if 'const' in node:
+        return node['const']
+    if node.get('enum'):
+        return node['enum'][0]
+    for key in ('anyOf', 'oneOf', 'allOf'):
+        if key in node:
+            branch = next((b for b in node[key] if b.get('type') != 'null'), None)
+            return schema_example(branch, root, depth + 1)
+    kind = node.get('type')
+    if isinstance(kind, list):
+        kind = next((t for t in kind if t != 'null'), None)
+    elif kind is None and 'properties' in node:
+        kind = 'object'
+    if kind == 'string':
+        return '...'
+    if kind in ('integer', 'number'):
+        return 0
+    if kind == 'boolean':
+        return False
+    if kind == 'array':
+        return [schema_example(node['items'], root, depth + 1)] if isinstance(node.get('items'), dict) else []
+    if kind == 'object':
+        return {k: schema_example(v, root, depth + 1) for k, v in node.get('properties', {}).items()}
+    return None
+
+
+def guided_instruction(response_model) -> str:
+    """graphiti-net's StructuredOutputMode.JsonObjectGuided text, character for character."""
+    schema = response_model.model_json_schema()
+    return (
+        '\n\nRespond with one JSON object that follows the JSON Schema below. Return the data itself, not the '
+        'schema: the object\'s keys are the schema\'s "properties" (no "properties", "type", "title" or '
+        '"$defs" wrapper), every required key is present, and a list with nothing in it is [].'
+        f'\n\nJSON Schema:\n\n{json.dumps(schema)}'
+        f'\n\nThe shape of the answer, with placeholder values:\n\n{json.dumps(schema_example(schema, schema))}'
+    )
+
+
+class GuidedGenericClient(OpenAIGenericClient):
+    """Upstream's OpenAIGenericClient with graphiti-net's JsonObjectGuided instruction instead of upstream's
+    json_object text, so both implementations send the same prompts in a guided run."""
+
+    def __init__(self, config: LLMConfig):
+        # json_schema mode skips upstream's own schema text; the request still asks for json_object below.
+        super().__init__(config, structured_output_mode='json_schema')
+
+    def _build_response_format(self, response_model):
+        return {'type': 'json_object'}
+
+    async def generate_response(self, messages, response_model=None, *args, **kwargs):
+        if response_model is not None:
+            messages[-1].content += guided_instruction(response_model)
+        return await super().generate_response(messages, response_model, *args, **kwargs)
+
+
 def build_llm() -> LLMClient:
     """The client that builds graphs and answers: OpenAI by default, or any OpenAI-compatible endpoint (DeepSeek,
     vLLM, ...) through upstream's OpenAIGenericClient when LLM_BASE_URL is set. The grader always uses OpenAI."""
@@ -82,7 +143,12 @@ def build_llm() -> LLMClient:
     config = llm_config()
     config.base_url = base_url
     config.api_key = os.environ.get('LLM_API_KEY', 'dummy')
-    client = OpenAIGenericClient(config, structured_output_mode=os.environ.get('LLM_STRUCTURED_OUTPUT', 'json_object'))
+    mode = os.environ.get('LLM_STRUCTURED_OUTPUT', 'json_object')
+    client = (
+        GuidedGenericClient(config)
+        if mode == 'json_object_guided'
+        else OpenAIGenericClient(config, structured_output_mode=mode)
+    )
     # Upstream's generic client does not record token usage; record it from each response so runs report tokens.
     create = client.client.chat.completions.create
 

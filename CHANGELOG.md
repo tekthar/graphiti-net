@@ -53,6 +53,10 @@ All notable changes to graphiti-net are written here. The format follows
   connection, with exponential backoff and jitter (`MaxAttempts`, `BaseDelay`, `MaxDelay`), honouring `Retry-After`.
   Each LLM attempt rebuilds its prompt, tokens are counted once, and a model call gate is asked once per call. Off by
   default, so behaviour stays upstream's. `RateLimitException.RetryAfter` carries a provider's requested wait.
+- **`StructuredOutputMode.JsonObjectGuided`** for `OpenAIGenericClient`: `json_object` output with a clearer prompt
+  (return the data, not the schema, plus an example object of the right shape), for providers such as DeepSeek whose
+  models sometimes echo upstream's bare schema back. `JsonObject` keeps upstream's text. See
+  [docs/api-compatibility.md](docs/api-compatibility.md#guided-json-output-for-providers-without-json_schema).
 
 ### Changed
 

@@ -20,6 +20,12 @@ public enum StructuredOutputMode
     /// <summary><c>json_object</c> response format, with the schema written into the prompt. For servers without
     /// <c>json_schema</c> support, such as DeepSeek.</summary>
     JsonObject,
+
+    /// <summary><c>json_object</c> response format, with a stronger instruction in the prompt than
+    /// <see cref="JsonObject"/>: return an instance, not the schema, followed by the schema and an example object of the
+    /// right shape. A graphiti-net addition for providers whose models echo a bare schema back (seen with DeepSeek);
+    /// <see cref="JsonObject"/> keeps upstream's text.</summary>
+    JsonObjectGuided,
 }
 
 /// <summary>
@@ -69,7 +75,7 @@ public class OpenAIGenericClient : LLMClient
     /// </summary>
     protected internal JsonObject BuildResponseFormat(Type? responseModel)
     {
-        if (responseModel is null || StructuredOutputMode == StructuredOutputMode.JsonObject)
+        if (responseModel is null || StructuredOutputMode != StructuredOutputMode.JsonSchema)
         {
             return new JsonObject { ["type"] = "json_object" };
         }
@@ -158,6 +164,10 @@ public class OpenAIGenericClient : LLMClient
         if (responseModel is not null && StructuredOutputMode == StructuredOutputMode.JsonObject)
         {
             AppendResponseSchema(messages, responseModel);
+        }
+        else if (responseModel is not null && StructuredOutputMode == StructuredOutputMode.JsonObjectGuided)
+        {
+            messages[^1].Content += ResponseModelSchema.GuidedInstruction(responseModel);
         }
 
         messages[0].Content += GetExtractionLanguageInstruction(groupId);

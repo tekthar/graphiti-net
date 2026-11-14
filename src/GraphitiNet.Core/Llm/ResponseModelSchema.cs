@@ -59,6 +59,91 @@ internal static class ResponseModelSchema
         GraphitiNet.Prompts.ResponseSchema.ToPromptJson(responseModel, SerializerOptions);
 
     /// <summary>
+    /// The text <see cref="StructuredOutputMode.JsonObjectGuided"/> appends to the last message: an instruction to
+    /// return an instance of the schema (models given only the schema, as upstream's <c>json_object</c> mode does,
+    /// sometimes echo the schema back), the schema as upstream writes it, and an example object of the right shape
+    /// with placeholder values.
+    /// </summary>
+    public static string GuidedInstruction(Type responseModel)
+    {
+        ArgumentNullException.ThrowIfNull(responseModel);
+        var schema = GraphitiNet.Prompts.ResponseSchema.Generate(responseModel, SerializerOptions);
+        var example = Example(schema, schema, 0);
+        return "\n\nRespond with one JSON object that follows the JSON Schema below. Return the data itself, not the "
+            + "schema: the object's keys are the schema's \"properties\" (no \"properties\", \"type\", \"title\" or "
+            + "\"$defs\" wrapper), every required key is present, and a list with nothing in it is []."
+            + "\n\nJSON Schema:\n\n" + Serialize(responseModel)
+            + "\n\nThe shape of the answer, with placeholder values:\n\n"
+            + GraphitiNet.Prompts.PromptHelpers.ToPromptJson(example, ensureAscii: true);
+    }
+
+    /// <summary>A placeholder instance of a schema node; <c>lme_qa.py</c>'s <c>schema_example</c> is the same.</summary>
+    internal static JsonNode? Example(JsonNode? node, JsonObject root, int depth)
+    {
+        if (node is not JsonObject schema || depth > 8)
+        {
+            return null;
+        }
+
+        if (schema["$ref"]?.GetValue<string>() is { } reference)
+        {
+            var name = reference[(reference.LastIndexOf('/') + 1)..];
+            return Example(root["$defs"]?[name], root, depth + 1);
+        }
+
+        if (schema.ContainsKey("const"))
+        {
+            return schema["const"]?.DeepClone();
+        }
+
+        if (schema["enum"] is JsonArray values && values.Count > 0)
+        {
+            return values[0]?.DeepClone();
+        }
+
+        foreach (var key in (string[])["anyOf", "oneOf", "allOf"])
+        {
+            if (schema[key] is JsonArray branches)
+            {
+                var branch = branches.FirstOrDefault(b => b?["type"]?.GetValue<string>() != "null");
+                return Example(branch, root, depth + 1);
+            }
+        }
+
+        var type = schema["type"] switch
+        {
+            JsonArray types => types.Select(t => t?.GetValue<string>()).FirstOrDefault(t => t != "null"),
+            JsonValue value => value.GetValue<string>(),
+            _ => schema.ContainsKey("properties") ? "object" : null,
+        };
+        switch (type)
+        {
+            case "string":
+                return "...";
+            case "integer":
+            case "number":
+                return 0;
+            case "boolean":
+                return false;
+            case "array":
+                return schema["items"] is JsonObject items ? new JsonArray(Example(items, root, depth + 1)) : new JsonArray();
+            case "object":
+                var result = new JsonObject();
+                if (schema["properties"] is JsonObject properties)
+                {
+                    foreach (var (key, value) in properties)
+                    {
+                        result[key] = Example(value, root, depth + 1);
+                    }
+                }
+
+                return result;
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>
     /// Makes a schema meet OpenAI's strict structured-output subset, as the OpenAI Python SDK's
     /// <c>to_strict_json_schema</c> does for <c>responses.parse</c>: every object gets
     /// <c>additionalProperties: false</c> and lists all its properties as required, and defaults are dropped.
